@@ -48,11 +48,11 @@ export class IslandScene extends Phaser.Scene {
   private isDrawingWall: boolean = false;
   private wallPreviewSprites: Phaser.GameObjects.Image[] = [];
   private wallStartTile: { x: number; y: number } | null = null;
-  private wallPreviewGraphics: Phaser.GameObjects.Graphics;
+  private wallPreviewGraphics!: Phaser.GameObjects.Graphics;
   private isDraggingCamera: boolean = false;
   private lastPointerPosition: { x: number; y: number } = { x: 0, y: 0 };
   private cameraDragButton: number = 2; // Right mouse button
-  private wallPreviewContainer: Phaser.GameObjects.Container;
+  private wallPreviewContainer!: Phaser.GameObjects.Container;
   private wallPreviewTiles: Phaser.GameObjects.Image[] = [];
   private naturalObjectManager: NaturalObjectManager;
   private terrainVariationManager: TerrainVariationManager;
