@@ -138,7 +138,8 @@ export class IslandScene extends Phaser.Scene {
       this.mapWidth,
       this.mapHeight,
       this.terrainData,
-      this.tileToIsometricCoordinates.bind(this)
+      this.tileToIsometricCoordinates.bind(this),
+      this.tileWidth,this.tileHeight
     );
   }
 
@@ -342,7 +343,8 @@ export class IslandScene extends Phaser.Scene {
   private updateWallConnections() {
     for (let y = 0; y < this.mapHeight; y++) {
       for (let x = 0; x < this.mapWidth; x++) {
-        if (this.walls[y][x] && this.walls[y][x].texture.key === "wall") {
+        const wall = this.walls[y][x];
+        if (wall && wall.texture.key === "wall") {
           this.updateSingleWallConnection(x, y);
         }
       }
@@ -528,7 +530,7 @@ export class IslandScene extends Phaser.Scene {
     });
     const naturalObject = this.naturalObjectManager.getObjectAtTile(x, y);
 
-    return [wall, building, naturalObject].reduce((highest, current) => {
+    return [wall, building, naturalObject].reduce((highest: Phaser.GameObjects.Image | null, current) => {
       if (!current) return highest;
       if (!highest) return current;
       return current.depth > highest.depth ? current : highest;
