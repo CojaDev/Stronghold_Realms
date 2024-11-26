@@ -1,3 +1,4 @@
+"use client"
 import * as Phaser from "phaser";
 import { createNoise2D, createNoise3D } from "simplex-noise";
 import { NaturalObjectManager } from './NaturalObjects';
