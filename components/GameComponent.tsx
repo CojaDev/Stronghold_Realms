@@ -41,7 +41,10 @@ export default function GameComponent({ setGame }: GameComponentProps) {
 
       // Disable context menu (right-click menu) globally
       const handleContextMenu = (e: MouseEvent) => e.preventDefault();
-      document.addEventListener('contextmenu', handleContextMenu);
+      if(document){
+
+        document.addEventListener('contextmenu', handleContextMenu);
+      }
     }
 
     return () => {
@@ -51,7 +54,9 @@ export default function GameComponent({ setGame }: GameComponentProps) {
         setGame(null)
       }
       const handleContextMenu = (e: MouseEvent) => e.preventDefault();
+      if(document){
       document.removeEventListener('contextmenu', handleContextMenu);
+      }
     }
   }, [setGame])
 

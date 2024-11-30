@@ -13,6 +13,7 @@ interface GameUIProps {
 }
 
 const GameUI: React.FC<GameUIProps> = ({ game }) => {
+  const [showFps, setShowFps] = useState(true)
   const [fps, setFps] = useState(0)
   const [selectedCategory, setSelectedCategory] = useState('buildings')
   const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null)
@@ -151,9 +152,12 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
       
       {/* Top-right: FPS, Compass, and Fullscreen */}
       <div className="absolute top-2 right-2 flex lg:flex-row flex-col-reverse gap-2">
-        <div className="bg-black bg-opacity-70 text-white p-2 rounded text-sm">
+        {showFps && (
+           <div className="bg-black bg-opacity-70 text-white p-2 rounded text-sm">
           FPS: {fps}
         </div>
+      )}
+       
         <div className="flex gap-2">
           <button className="bg-black bg-opacity-70 text-white p-2 rounded flex items-center justify-center pointer-events-auto" onClick={() => console.log('Compass clicked')}>
             <FaRegCompass className="w-5 h-5" />
@@ -278,6 +282,19 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
                   <option>Medium</option>
                   <option>High</option>
                 </select>
+              </div>
+              <div>
+              <label className="block text-sm font-medium mb-1">Show FPS</label>
+              <input
+  type="checkbox"
+  name="checkbox"
+  value="showFps"
+  className='p-2'
+  onChange={() => setShowFps(!showFps)}
+  checked={showFps}
+/> 
+
+
               </div>
             </div>
             <div className="mt-6 flex justify-end">
