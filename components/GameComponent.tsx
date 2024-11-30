@@ -39,11 +39,9 @@ export default function GameComponent({ setGame }: GameComponentProps) {
       gameRef.current = new Phaser.Game(config)
       setGame(gameRef.current)
 
-      // Disable context menu (right-click menu)
-      const canvas = document.querySelector('#phaser-game canvas') as HTMLCanvasElement
-      if (canvas) {
-        canvas.addEventListener('contextmenu', (e) => e.preventDefault())
-      }
+      // Disable context menu (right-click menu) globally
+      const handleContextMenu = (e: MouseEvent) => e.preventDefault();
+      document.addEventListener('contextmenu', handleContextMenu);
     }
 
     return () => {
@@ -52,10 +50,8 @@ export default function GameComponent({ setGame }: GameComponentProps) {
         gameRef.current = null
         setGame(null)
       }
-      const canvas = document.querySelector('#phaser-game canvas') as HTMLCanvasElement
-      if (canvas) {
-        canvas.removeEventListener('contextmenu', (e) => e.preventDefault())
-      }
+      const handleContextMenu = (e: MouseEvent) => e.preventDefault();
+      document.removeEventListener('contextmenu', handleContextMenu);
     }
   }, [setGame])
 

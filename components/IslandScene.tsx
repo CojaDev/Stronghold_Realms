@@ -15,11 +15,14 @@ interface Building {
 }
 
 const BUILDINGS: { [key: string]: Building } = {
-  house: { type: "house", sprite: "house", width: 2, height: 2, maxHp: 100 },
+  house: { type: "house", sprite: "house", width: 3, height: 3, maxHp: 100 },
   barracks: { type: "barracks", sprite: "barracks", width: 5, height: 5, maxHp: 200 },
+  blacksmith: { type: "blacksmith", sprite: "blacksmith", width: 4, height: 4, maxHp: 150 },
   bakery: { type: "bakery", sprite: "bakery", width: 2, height: 2, maxHp: 80 },
+  lumberCamp: { type: "lumberCamp", sprite: "lumberCamp", width: 3, height: 3, maxHp: 120 },
+  miningCamp: { type: "miningCamp", sprite: "miningCamp", width: 3, height: 3, maxHp: 120 },
   farm: { type: "farm", sprite: "farm", width: 5, height: 2, maxHp: 120 },
-  stockpile: { type: "stockpile", sprite: "stockpile", width: 2, height: 2, maxHp: 150 },
+  storage: { type: "storage", sprite: "storage", width: 2, height: 2, maxHp: 150 },
   wall: { type: "wall", sprite: "wall", width: 1, height: 1, maxHp: 50 },
   tower: { type: "tower", sprite: "tower", width: 4, height: 4, maxHp: 300 },
   gate: { type: "gate", sprite: "gate", width: 5, height: 1, maxHp: 250 },
@@ -27,8 +30,8 @@ const BUILDINGS: { [key: string]: Building } = {
 };
 
 export class IslandScene extends Phaser.Scene {
-  private mapWidth: number = 220;
-  private mapHeight: number = 220;
+  private mapWidth: number = 200;
+  private mapHeight: number = 200;
   private tileWidth: number = 64;
   private tileHeight: number = 32;
   private wallClickThreshold: number = 200;
@@ -58,6 +61,9 @@ export class IslandScene extends Phaser.Scene {
   private naturalObjectManager: NaturalObjectManager;
   private terrainVariationManager: TerrainVariationManager;
   private harvestingMechanic: HarvestingMechanic;
+  private minimapData: ImageData | null = null;
+  private lastMinimapUpdateTime: number = 0;
+  private minimapUpdateInterval: number = 3000;
 
   constructor() {
     super("IslandScene");
@@ -67,20 +73,20 @@ export class IslandScene extends Phaser.Scene {
     this.terrainVariationManager = new TerrainVariationManager(this);
     this.harvestingMechanic = new HarvestingMechanic(this);
   }
-  
+
   preload() {
     this.input.setDefaultCursor('url(/assets/cursors/main2.png), pointer');
-    this.load.spritesheet("tiles", "/assets/tilesets/isometric_tileset4.png", {
+    this.load.spritesheet("tiles", "/assets/tilesets/isometric_tileset.webp", {
       frameWidth: this.tileWidth,
       frameHeight: this.tileHeight,
     });
-    this.load.image("castle", "/assets/buildings/castle.png");
-    this.load.image('tree', '/assets/nature/tree2.png');
-    this.load.image('rock', '/assets/nature/rock.png');
+    this.load.image("castle", "/assets/buildings/townHall.webp");
+    this.load.image('tree', '/assets/nature/tree2.webp');
+    this.load.image('rock', '/assets/nature/rock.webp');
     Object.values(BUILDINGS).forEach((building) => {
       this.load.image(
         building.sprite,
-        `/assets/buildings/${building.sprite}.png`
+        `/assets/buildings/${building.sprite}.webp`
       );
     });
   }
@@ -91,13 +97,13 @@ export class IslandScene extends Phaser.Scene {
     this.createIsometricMap();
     this.generateSpawnPoints();
     this.placeInitialCastles();
-    this.updateBuildingDepths();
     this.spawnNaturalObjects();
+    this.updateBuildingDepths();
     this.setupCamera();
     this.input.on("pointerdown", this.handlePointerDown, this);
     this.input.on("pointermove", this.handlePointerMove, this);
     this.input.on("pointerup", this.handlePointerUp, this);
-    
+
     // Initialize the walls array
     for (let y = 0; y < this.mapHeight; y++) {
       this.walls[y] = [];
@@ -109,12 +115,126 @@ export class IslandScene extends Phaser.Scene {
     this.wallPreviewContainer.setDepth(Number.MAX_SAFE_INTEGER);
     this.wallPreviewGraphics = this.add.graphics();
     this.wallPreviewGraphics.setDepth(Number.MAX_SAFE_INTEGER);
+    this.createMinimapData();
+  }
+  update(time: number, delta: number) {
+    // ... (keep existing update logic)
+
+    // Update minimap at a fixed interval
+    if (time - this.lastMinimapUpdateTime > this.minimapUpdateInterval) {
+      this.updateMinimapData();
+      this.lastMinimapUpdateTime = time;
+    }
+  }
+
+  private createMinimapData() {
+    const minimapSize = 200;
+    this.minimapData = new ImageData(minimapSize, minimapSize);
+    this.updateMinimapData();
+  }
+
+  private updateMinimapData() {
+    if (!this.minimapData) return;
+
+    const { width, height, data } = this.minimapData;
+
+    for (let y = 0; y < this.mapHeight; y++) {
+      for (let x = 0; x < this.mapWidth; x++) {
+        const tileType = this.terrainData[y][x];
+        const color = this.getMinimapColorForTerrain(tileType);
+        const index = (y * width + x) * 4;
+        data[index] = (color >> 16) & 255;     // R
+        data[index + 1] = (color >> 8) & 255;  // G
+        data[index + 2] = color & 255;         // B
+        data[index + 3] = 255;                 // A
+      }
+    }
+
+    // Draw buildings
+    this.buildings.forEach(building => {
+      const color = this.getMinimapColorForBuilding(building.getData('type'));
+      this.drawRectOnMinimap(
+        building.getData('gridX'),
+        building.getData('gridY'),
+        building.getData('width') + 4,
+        building.getData('height') + 4,
+        color
+      );
+    });
+
+    // Draw natural objects
+    this.naturalObjectManager.getAllObjects().forEach(object => {
+      const color = this.getMinimapColorForNaturalObject(object.getData('type'));
+      this.drawRectOnMinimap(
+        object.getData('gridX'),
+        object.getData('gridY'),
+        3,
+        3,
+        color
+      );
+    });
+  }
+
+  private drawRectOnMinimap(x: number, y: number, width: number, height: number, color: number) {
+    if (!this.minimapData) return;
+
+    const { width: mapWidth, data } = this.minimapData;
+    for (let dy = 0; dy < height; dy++) {
+      for (let dx = 0; dx < width; dx++) {
+        const index = ((y + dy) * mapWidth + (x + dx)) * 4;
+        data[index] = (color >> 16) & 255;     // R
+        data[index + 1] = (color >> 8) & 255;  // G
+        data[index + 2] = color & 255;         // B
+        data[index + 3] = 255;                 // A
+      }
+    }
+  }
+
+  private getMinimapColorForTerrain(tileType: number): number {
+    switch (tileType) {
+      case 0: return 0x0066CC; // Deep water (darker blue)
+      case 1: return 0x3399FF; // Shallow water (lighter blue)
+      case 2: return 0xFFCC66; // Sand (light orange)
+      case 3: return 0x66CC33; // Light grass (light green)
+      case 4: return 0x339900; // Dark grass (dark green)
+      case 5: return 0x999999; // Stone (gray)
+      default: return 0x000000; // Black for unknown
+    }
+  }
+
+  private getMinimapColorForBuilding(buildingType: string): number {
+    switch (buildingType) {
+      case 'castle': return 0xCC0000; // Dark red
+      case 'house': return 0xFF6666; // Light red
+      case 'barracks': return 0x990000; // Darker red
+      case 'wall': return 0x663300; // Brown
+      case 'tower': return 0xFF3300; // Orange
+      case 'gate': return 0xFFCC00; // Yellow
+      case 'farm': return 0x99CC00; // Light green
+      case 'bakery': return 0xFFCC99; // Light orange
+      case 'stockpile': return 0x996633; // Dark brown
+      default: return 0xFFFFFF; // White for unknown buildings
+    }
+  }
+
+  private getMinimapColorForNaturalObject(objectType: string): number {
+    switch (objectType) {
+      case 'tree': return 0x006600; // Dark green
+      case 'rock': return 0x666666; // Dark gray
+      default: return 0x000000; // Black for unknown
+    }
+  }
+
+  // ... (keep other existing methods)
+
+  public getMinimapData(): ImageData | null {
+    return this.minimapData;
   }
 
   private onNaturalObjectClick(object: Phaser.GameObjects.Image) {
     this.harvestingMechanic.harvestNaturalObject(object, (resourceYield) => {
       console.log(`Harvested ${resourceYield} resources from ${object.getData('type')}`);
-      
+
       // Remove the object from the game
       const index = this.naturalObjectManager.getAllObjects().indexOf(object);
       if (index > -1) {
@@ -123,7 +243,7 @@ export class IslandScene extends Phaser.Scene {
       object.destroy();
     });
   }
-  
+
   private spawnNaturalObjects() {
     this.naturalObjectManager.spawnNaturalObjects(
       this.mapWidth,
@@ -140,7 +260,7 @@ export class IslandScene extends Phaser.Scene {
       this.mapHeight,
       this.terrainData,
       this.tileToIsometricCoordinates.bind(this),
-      this.tileWidth,this.tileHeight
+      this.tileWidth, this.tileHeight
     );
   }
 
@@ -188,10 +308,10 @@ export class IslandScene extends Phaser.Scene {
       this.cameras.main.scrollY -= deltaY / this.cameras.main.zoom;
       this.lastPointerPosition = { x: pointer.x, y: pointer.y };
       return;
-    }else if (this.isPlacingWall && this.isDrawingWall && this.wallStartTile) {
+    } else if (this.isPlacingWall && this.isDrawingWall && this.wallStartTile) {
       const endTile = this.worldToTileCoordinates(pointer.worldX, pointer.worldY);
       this.previewWall(this.wallStartTile, endTile);
-      
+
       // Debug log
       console.log('Updating wall preview', this.wallStartTile, endTile);
     } else if (this.isPlacingBuilding && this.currentBuilding) {
@@ -227,19 +347,19 @@ export class IslandScene extends Phaser.Scene {
 
   private placeWall(start: { x: number; y: number }, end: { x: number; y: number }) {
     const path = this.getWallPath(start, end);
-    
+
     path.forEach((point) => {
       if (this.isValidTile(point.x, point.y) && !this.walls[point.y]?.[point.x]) {
         const isoCoords = this.tileToIsometricCoordinates(point.x, point.y);
         const wall = this.add.image(isoCoords.x, isoCoords.y, "wall");
         wall.setOrigin(0.5, 1);
-        
+
         const depth = this.calculateDepth(point.x, point.y, 1);
         wall.setDepth(depth);
-        
+
         wall.setData("gridX", point.x);
         wall.setData("gridY", point.y);
-        
+
         if (!this.walls[point.y]) this.walls[point.y] = [];
         this.walls[point.y][point.x] = wall;
 
@@ -258,16 +378,16 @@ export class IslandScene extends Phaser.Scene {
 
   private previewWall(start: { x: number; y: number }, end: { x: number; y: number }) {
     this.clearWallPreview();
-    
+
     const path = this.getWallPath(start, end);
-    
+
     path.forEach((point) => {
       const isoCoords = this.tileToIsometricCoordinates(point.x, point.y);
       const wallPreview = this.add.image(isoCoords.x, isoCoords.y, "wall");
       wallPreview.setOrigin(0.5, 1);
       wallPreview.setAlpha(0.7);
       wallPreview.setTint(0x00FFFFCC);  // Blue tint for better visibility against grass
-      
+
       this.wallPreviewContainer.add(wallPreview);
       this.wallPreviewTiles.push(wallPreview);
     });
@@ -282,15 +402,15 @@ export class IslandScene extends Phaser.Scene {
     path.forEach((point, index) => {
       const connections = this.getWallConnections(point.x, point.y, path);
       const wallSprite = this.wallPreviewTiles[index];
-      
+
       if (wallSprite) {
         const textureKey = "wall";
         wallSprite.setTexture(textureKey);
-        
+
         // Adjust rotation if needed
-     
-          wallSprite.setAngle(0);
-        
+
+        wallSprite.setAngle(0);
+
       }
     });
   }
@@ -329,7 +449,7 @@ export class IslandScene extends Phaser.Scene {
       path.push({ x, y });  // Push grid coordinates, not isometric
 
       if (x === end.x && y === end.y) break;
-      
+
       if (Math.abs(x - end.x) > Math.abs(y - end.y)) {
         x += dx;
       } else {
@@ -389,7 +509,7 @@ export class IslandScene extends Phaser.Scene {
       this.buildingPreview.setVisible(true);
       this.buildingPreview.setAlpha(isValidPlacement ? 0.8 : 0.3);
       this.buildingPreview.setTint(isValidPlacement ? 0xffffff : 0xff0000);
-      
+
       // Set the preview depth to be above all other game objects
       const previewDepth = (tileCoords.y + this.currentBuilding.height) * 1000 + tileCoords.x + 10000;
       this.buildingPreview.setDepth(previewDepth);
@@ -433,11 +553,11 @@ export class IslandScene extends Phaser.Scene {
     const isoCoords = this.tileToIsometricCoordinates(x, y);
     const newBuilding = this.add.image(isoCoords.x, isoCoords.y, building.sprite);
     newBuilding.setOrigin(0.5, 1);
-    
+
     // Calculate depth based on the building's position and size
-     const depth = this.calculateDepth(x, y, building.height);
+    const depth = this.calculateDepth(x, y, building.height);
     newBuilding.setDepth(depth);
-  
+
 
     // Apply offset if specified
     if (building.offsetX) newBuilding.x += building.offsetX * this.tileWidth;
@@ -505,7 +625,7 @@ export class IslandScene extends Phaser.Scene {
 
   private sortGameObjects() {
     const gameObjects = this.children.list as Phaser.GameObjects.GameObject[];
-    
+
     gameObjects.sort((a, b) => {
       if ('depth' in a && 'depth' in b) {
         return (a.depth as number) - (b.depth as number);
@@ -554,7 +674,7 @@ export class IslandScene extends Phaser.Scene {
     const tileX = Math.floor((x - offsetX) / this.tileWidth + y / this.tileHeight);
     return { x: tileX, y: tileY };
   }
-  
+
   private tileToIsometricCoordinates(x: number, y: number): { x: number; y: number } {
     const offsetX = (this.mapWidth * this.tileWidth) / 2;
     const isoX = (x - y) * this.tileWidth / 2 + offsetX;
@@ -641,7 +761,7 @@ export class IslandScene extends Phaser.Scene {
   }
 
   private generateSpawnPoints() {
-    const minDistance = 25; // Increased for larger maps
+    const minDistance = 40; // Increased for larger maps
     const attempts = 1000;
 
     for (let i = 0; i < 4; i++) {
@@ -649,7 +769,7 @@ export class IslandScene extends Phaser.Scene {
       let placed = false;
       let attempts = 0;
 
-      while (!placed && attempts < 1000) {
+      while (!placed && attempts < 2000) {
         const x = Phaser.Math.Between(
           Math.floor(this.mapWidth * 0.1),
           Math.floor(this.mapWidth * 0.9)
@@ -669,7 +789,7 @@ export class IslandScene extends Phaser.Scene {
 
           if (
             this.spawnPoints.every(
-              (p) => p.distance(point) >= minDistance * this.tileWidth
+              (p) => p.distance(point) >= minDistance * this.tileWidth + this.tileHeight
             )
           ) {
             this.spawnPoints.push(point);

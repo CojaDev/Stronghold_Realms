@@ -11,8 +11,8 @@ export interface NaturalObject {
 }
 
 export const NATURAL_OBJECTS: { [key: string]: NaturalObject } = {
-  tree: { type: 'tree', sprite: 'tree', width: 1, height: 2, harvestTime: 5, resourceYield: 10, canAppearOnSand: false },
-  rock: { type: 'rock', sprite: 'rock', width: 1, height: 1, harvestTime: 8, resourceYield: 5, canAppearOnSand: true },
+  tree: { type: 'tree', sprite: 'tree', width: 2, height: 2, harvestTime: 5, resourceYield: 10, canAppearOnSand: false },
+  rock: { type: 'rock', sprite: 'rock', width: 3, height: 3, harvestTime: 8, resourceYield: 5, canAppearOnSand: false },
 };
 
 export class NaturalObjectManager {
@@ -24,8 +24,8 @@ export class NaturalObjectManager {
   }
 
   spawnNaturalObjects(mapWidth: number, mapHeight: number, isValidTile: (x: number, y: number) => boolean, getTileType: (x: number, y: number) => number, tileToIsometricCoordinates: (x: number, y: number) => { x: number; y: number }, calculateDepth: (x: number, y: number, height: number) => number) {
-    const groupCount = Math.floor(mapWidth * mapHeight * 0.002); // Reduced number of groups
-    const maxGroupSize = 8;
+    const groupCount = Math.floor(mapWidth * mapHeight * 0.003); // Reduced number of groups
+    const maxGroupSize = 10;
 
     for (let i = 0; i < groupCount; i++) {
       const centerX = Phaser.Math.Between(0, mapWidth - 1);
