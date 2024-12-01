@@ -45,7 +45,7 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
         }
       }
 
-      const interval = setInterval(updateMinimap, 1000) // Update every 1 second
+      const interval = setInterval(updateMinimap, 2900) // Update every 1 second
 
       return () => clearInterval(interval)
     }
