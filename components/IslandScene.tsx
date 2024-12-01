@@ -19,8 +19,10 @@ const BUILDINGS: { [key: string]: Building } = {
   barracks: { type: "barracks", sprite: "barracks", width: 5, height: 5, maxHp: 200 },
   blacksmith: { type: "blacksmith", sprite: "blacksmith", width: 4, height: 4, maxHp: 150 },
   bakery: { type: "bakery", sprite: "bakery", width: 2, height: 2, maxHp: 80 },
-  lumberCamp: { type: "lumberCamp", sprite: "lumberCamp", width: 3, height: 3, maxHp: 120 },
-  miningCamp: { type: "miningCamp", sprite: "miningCamp", width: 3, height: 3, maxHp: 120 },
+  lumbercamp: { type: "lumbercamp", sprite: "lumbercamp", width: 4, height: 4, maxHp: 120 },
+  miningcamp: { type: "miningcamp", sprite: "miningcamp", width: 4, height: 4, maxHp: 120 },
+  mill: { type: "mill", sprite: "mill", width: 4, height: 4, maxHp: 120 },
+  hunterspost: { type: "hunterspost", sprite: "hunterspost", width: 3, height: 3, maxHp: 120 },
   farm: { type: "farm", sprite: "farm", width: 5, height: 2, maxHp: 120 },
   storage: { type: "storage", sprite: "storage", width: 2, height: 2, maxHp: 150 },
   wall: { type: "wall", sprite: "wall", width: 1, height: 1, maxHp: 50 },
@@ -116,11 +118,12 @@ export class IslandScene extends Phaser.Scene {
     this.wallPreviewGraphics = this.add.graphics();
     this.wallPreviewGraphics.setDepth(Number.MAX_SAFE_INTEGER);
     this.createMinimapData();
+    if(this.input.keyboard){
+      
+      this.input.keyboard.on('keydown-ESC', this.stopPlacingBuilding, this);
+    }
   }
   update(time: number, delta: number) {
-    // ... (keep existing update logic)
-
-    // Update minimap at a fixed interval
     if (time - this.lastMinimapUpdateTime > this.minimapUpdateInterval) {
       this.updateMinimapData();
       this.lastMinimapUpdateTime = time;
@@ -253,6 +256,11 @@ export class IslandScene extends Phaser.Scene {
       this.tileToIsometricCoordinates.bind(this),
       this.calculateDepth.bind(this)
     );
+
+    // Emit an event for each natural object
+    this.naturalObjectManager.getAllObjects().forEach(object => {
+      this.events.emit('naturalObjectSpawned', object);
+    });
   }
   private addTerrainVariations() {
     this.terrainVariationManager.addTerrainVariations(
@@ -265,6 +273,11 @@ export class IslandScene extends Phaser.Scene {
   }
 
   startPlacingBuilding(buildingType: string) {
+    if (buildingType === 'stop') {
+      this.stopPlacingBuilding();
+      return;
+    }
+
     this.isPlacingBuilding = true;
     this.currentBuilding = BUILDINGS[buildingType];
     if (this.buildingPreview) {
@@ -274,9 +287,13 @@ export class IslandScene extends Phaser.Scene {
     this.buildingPreview.setAlpha(0.5);
     this.buildingPreview.setVisible(false);
 
-    this.isPlacingWall = buildingType === "wall";
-    this.wallStartTile = null;
-    this.isDrawingWall = false;
+    if (buildingType === "wall") {
+      this.isPlacingWall = true;
+      this.wallStartTile = null;
+      this.isDrawingWall = false;
+    } else {
+      this.isPlacingWall = false;
+    }
   }
 
   private handlePointerDown(pointer: Phaser.Input.Pointer) {
@@ -284,6 +301,7 @@ export class IslandScene extends Phaser.Scene {
       this.input.setDefaultCursor('url(/assets/cursors/main.png), pointer');
       this.isDraggingCamera = true;
       this.lastPointerPosition = { x: pointer.x, y: pointer.y };
+      this.stopPlacingBuilding();
       return;
     }
 
@@ -550,6 +568,8 @@ export class IslandScene extends Phaser.Scene {
   }
 
   private placeBuilding(x: number, y: number, building: Building) {
+    console.log(`Attempting to place building: ${building.type}`);
+    console.log(`Building data:`, building);
     const isoCoords = this.tileToIsometricCoordinates(x, y);
     const newBuilding = this.add.image(isoCoords.x, isoCoords.y, building.sprite);
     newBuilding.setOrigin(0.5, 1);
@@ -587,6 +607,9 @@ export class IslandScene extends Phaser.Scene {
     // Update depths of all buildings to ensure correct rendering order
     this.updateBuildingDepths();
     this.sortGameObjects();
+
+    // Emit an event when a building is placed
+    this.events.emit('buildingPlaced', newBuilding);
   }
   private updateBuildingDepths() {
     this.buildings.forEach(building => {
@@ -706,9 +729,7 @@ export class IslandScene extends Phaser.Scene {
     const maxDistance = Math.sqrt(
       Math.pow(this.mapWidth / 2, 2) + Math.pow(this.mapHeight / 2, 2)
     );
-
     const seed = Math.random() * 1000;
-
     for (let y = 0; y < this.mapHeight; y++) {
       const row: number[] = [];
       for (let x = 0; x < this.mapWidth; x++) {
@@ -716,7 +737,6 @@ export class IslandScene extends Phaser.Scene {
         let frequency = scale;
         let amplitude = 1;
         let maxValue = 0;
-
         for (let i = 0; i < octaves; i++) {
           const sampleX = x * frequency;
           const sampleY = y * frequency;
@@ -726,17 +746,13 @@ export class IslandScene extends Phaser.Scene {
           amplitude *= persistence;
           frequency *= lacunarity;
         }
-
         noise = noise / maxValue;
-
         const dx = x - centerX;
         const dy = y - centerY;
         const distanceFromCenter = Math.sqrt(dx * dx + dy * dy) / maxDistance;
-
         const islandShape = 1 - Math.pow(distanceFromCenter * 1.2, 2.5);
         const coastNoise = this.noise2D(x * 0.05, y * 0.05) * 0.2;
         const combinedValue = ((noise + 1) / 2) * (islandShape + coastNoise);
-
         let tileIndex: number;
         if (distanceFromCenter > 0.85) {
           tileIndex = 0; // Deep water at edges
@@ -751,12 +767,10 @@ export class IslandScene extends Phaser.Scene {
         } else {
           tileIndex = 5; // Mountain
         }
-
         row.push(tileIndex);
       }
       data.push(row);
     }
-
     return data;
   }
 
@@ -906,4 +920,47 @@ export class IslandScene extends Phaser.Scene {
     console.log(`Clicked on castle ${index + 1}`);
     // Add additional interactions like opening menus or upgrading castles
   }
+
+  public getBuildingData(buildingType: string): any {
+    const building = this.buildings.find(b => b.getData('type') === buildingType);
+    if (building) {
+      return {
+        name: building.getData('type'),
+        health: building.getData('hp'),
+        maxHealth: building.getData('maxHp'),
+        // Add more properties as needed
+      };
+    }
+    return null;
+  }
+
+  public getBuildingStats(building: Phaser.GameObjects.Image) {
+    return {
+      type: building.getData('type'),
+      hp: building.getData('hp'),
+      maxHp: building.getData('maxHp'),
+      // Add more stats as needed
+    };
+  }
+
+  public getNaturalObjectStats(object: Phaser.GameObjects.Image) {
+    return {
+      type: object.getData('type'),
+      // Add more stats as needed
+    };
+  }
+
+  public stopPlacingBuilding() {
+    this.isPlacingBuilding = false;
+    this.isPlacingWall = false;
+    this.isDrawingWall = false;
+    this.wallStartTile = null;
+    this.currentBuilding = null;
+    if (this.buildingPreview) {
+      this.buildingPreview.destroy();
+      this.buildingPreview = null;
+    }
+    this.clearWallPreview();
+  }
 }
+
