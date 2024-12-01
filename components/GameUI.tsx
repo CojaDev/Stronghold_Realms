@@ -23,7 +23,7 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
   const minimapRef = useRef<HTMLCanvasElement>(null)
 
   const handleFullscreen = () => {
-    if (document.fullscreenElement) {
+    if (typeof document !== 'undefined' && document.fullscreenElement) {
       document.exitFullscreen()
     } else {
       document.documentElement.requestFullscreen()
@@ -163,7 +163,7 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
             <FaRegCompass className="w-5 h-5" />
           </button>
           <button className="bg-black bg-opacity-70 text-white p-2 rounded flex items-center justify-center pointer-events-auto" onClick={handleFullscreen}>
-            {document.fullscreenElement ? <MdFullscreenExit className="w-5 h-5" /> : <MdFullscreen className="w-5 h-5" />}
+            {typeof document !== 'undefined' && document.fullscreenElement ? <MdFullscreenExit className="w-5 h-5" /> : <MdFullscreen className="w-5 h-5" />}
           </button>
         </div>
       </div>
