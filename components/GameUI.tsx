@@ -25,6 +25,9 @@ import { IoHammerSharp } from "react-icons/io5";
 interface GameUIProps {
   game: Phaser.Game | null;
 }
+const imageLoader = ({ src }: { src: string }) => {
+  return `${process.env.NEXT_PUBLIC_VERCEL_URL || ""}${src}`;
+};
 
 const GameUI: React.FC<GameUIProps> = ({ game }) => {
   const [showFps, setShowFps] = useState(true);
@@ -440,10 +443,12 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
                   >
                     <div className="lg:w-20 lg:h-16 lg:max-w-20 max-w-7 w-7 h-4 relative">
                       <Image
+                        loader={imageLoader}
                         src={item.image}
                         alt={item.name}
                         layout="fill"
                         objectFit="contain"
+                        priority
                       />
                     </div>
                     <div className="text-xs mt-1 truncate w-full">
