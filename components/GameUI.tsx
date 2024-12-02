@@ -1,160 +1,200 @@
-'use client'
+"use client";
 
-import React, { useState, useEffect, useRef } from 'react'
-import { MdFullscreen, MdFullscreenExit, MdSettings } from "react-icons/md"
-import { FaRegCompass, FaHeart, FaShieldAlt, FaAppleAlt } from "react-icons/fa"
+import React, { useState, useEffect, useRef } from "react";
+import { MdFullscreen, MdFullscreenExit, MdSettings } from "react-icons/md";
+import { FaRegCompass, FaHeart, FaShieldAlt, FaAppleAlt } from "react-icons/fa";
 import { LuSwords } from "react-icons/lu";
-import { GiBrickWall, GiSwordman, GiScrollUnfurled, GiWoodenCrate, GiWoodBeam, GiWheat, GiGoldBar, GiRock, GiMilitaryFort, GiBarracksTent, GiMeat, GiStoneBlock, GiStoneTower } from "react-icons/gi"
-import Image from 'next/image'
-import { IoHammerSharp } from 'react-icons/io5';
+import {
+  GiBrickWall,
+  GiSwordman,
+  GiScrollUnfurled,
+  GiWoodenCrate,
+  GiWoodBeam,
+  GiWheat,
+  GiGoldBar,
+  GiRock,
+  GiMilitaryFort,
+  GiBarracksTent,
+  GiMeat,
+  GiStoneBlock,
+  GiStoneTower,
+} from "react-icons/gi";
+import Image from "next/image";
+import { IoHammerSharp } from "react-icons/io5";
 
 interface GameUIProps {
-  game: Phaser.Game | null
+  game: Phaser.Game | null;
 }
 
 const GameUI: React.FC<GameUIProps> = ({ game }) => {
-  const [showFps, setShowFps] = useState(true)
-  const [fps, setFps] = useState(0)
-  const [selectedCategory, setSelectedCategory] = useState('buildings')
-  const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null)
-  const [isPlacingWall, setIsPlacingWall] = useState(false)
-  const [resources, setResources] = useState({ wood: 1000, food: 1000, gold: 1000, stone: 1000, population: 0 })
-  const [buildingStats, setBuildingStats] = useState<any>(null)
-  const [showSettings, setShowSettings] = useState(false)
-  const minimapRef = useRef<HTMLCanvasElement>(null)
+  const [showFps, setShowFps] = useState(true);
+  const [fps, setFps] = useState(0);
+  const [selectedCategory, setSelectedCategory] = useState("buildings");
+  const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null);
+  const [isPlacingWall, setIsPlacingWall] = useState(false);
+  const [resources, setResources] = useState({
+    wood: 1000,
+    food: 1000,
+    gold: 1000,
+    stone: 1000,
+    population: 0,
+  });
+  const [buildingStats, setBuildingStats] = useState<any>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const minimapRef = useRef<HTMLCanvasElement>(null);
 
   const handleFullscreen = () => {
-    if (document.fullscreenElement) {
-      document.exitFullscreen()
-    } else {
-      document.documentElement.requestFullscreen()
+    if (typeof document !== "undefined") {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        document.documentElement.requestFullscreen();
+      }
     }
-  }
+  };
 
   useEffect(() => {
     if (game && minimapRef.current) {
       const updateMinimap = () => {
-        const scene = game.scene.getScene('IslandScene') as any
+        const scene = game.scene.getScene("IslandScene") as any;
         if (scene && scene.getMinimapData) {
-          const minimapData = scene.getMinimapData()
+          const minimapData = scene.getMinimapData();
           if (minimapData) {
-            const ctx = minimapRef.current!.getContext('2d')
+            const ctx = minimapRef.current!.getContext("2d");
             if (ctx) {
-              ctx.putImageData(minimapData, 0, 0)
+              ctx.putImageData(minimapData, 0, 0);
             }
           }
         }
-      }
+      };
 
-      const interval = setInterval(updateMinimap, 1000) // Update every 1 second
+      const interval = setInterval(updateMinimap, 1000); // Update every 1 second
 
-      return () => clearInterval(interval)
+      return () => clearInterval(interval);
     }
-  }, [game])
+  }, [game]);
 
   useEffect(() => {
     if (game) {
-      const scene = game.scene.getScene('IslandScene') as any;
+      const scene = game.scene.getScene("IslandScene") as any;
       if (scene) {
-        scene.events.on('buildingPlaced', (building: Phaser.GameObjects.Image) => {
-          const stats = scene.getBuildingStats(building);
-          setBuildingStats(stats);
-        });
+        scene.events.on(
+          "buildingPlaced",
+          (building: Phaser.GameObjects.Image) => {
+            const stats = scene.getBuildingStats(building);
+            setBuildingStats(stats);
+          }
+        );
 
-        scene.events.on('naturalObjectSpawned', (object: Phaser.GameObjects.Image) => {
-          const stats = scene.getNaturalObjectStats(object);
-          setBuildingStats(stats);
-        });
+        scene.events.on(
+          "naturalObjectSpawned",
+          (object: Phaser.GameObjects.Image) => {
+            const stats = scene.getNaturalObjectStats(object);
+            setBuildingStats(stats);
+          }
+        );
 
         // Clean up event listeners
         return () => {
-          scene.events.off('buildingPlaced');
-          scene.events.off('naturalObjectSpawned');
+          scene.events.off("buildingPlaced");
+          scene.events.off("naturalObjectSpawned");
         };
       }
     }
   }, [game]);
 
   useEffect(() => {
-    let frameCount = 0
-    let lastTime = performance.now()
+    let frameCount = 0;
+    let lastTime = performance.now();
 
     const updateFPS = () => {
-      const now = performance.now()
-      const delta = now - lastTime
-      frameCount++
+      const now = performance.now();
+      const delta = now - lastTime;
+      frameCount++;
 
       if (delta >= 1000) {
-        setFps(Math.round((frameCount * 1000) / delta))
-        frameCount = 0
-        lastTime = now
+        setFps(Math.round((frameCount * 1000) / delta));
+        frameCount = 0;
+        lastTime = now;
       }
 
-      requestAnimationFrame(updateFPS)
-    }
+      requestAnimationFrame(updateFPS);
+    };
 
     if (showFps) {
-      updateFPS()
+      updateFPS();
     }
 
     // Simulating resource changes
     const resourceInterval = setInterval(() => {
-      setResources(prev => ({
+      setResources((prev) => ({
         ...prev,
         wood: prev.wood + 10,
         food: prev.food + 5,
         gold: prev.gold + 2,
         stone: prev.stone + 1,
-        population: Math.min(prev.population + 1, 200)
-      }))
-    }, 5000)
+        population: Math.min(prev.population + 1, 200),
+      }));
+    }, 5000);
 
     return () => {
-      clearInterval(resourceInterval)
-    }
-  }, [showFps])
+      clearInterval(resourceInterval);
+    };
+  }, [showFps]);
 
   const menuCategories = [
-    { id: 'buildings', label: 'Buildings', icon: <IoHammerSharp className="w-6 h-6" /> },
-    { id: 'defenses', label: 'Defenses', icon: <GiStoneTower className="w-6 h-6" /> },
-    { id: 'food', label: 'Food', icon: <FaAppleAlt className="w-6 h-6" /> },
-    { id: 'research', label: 'Research', icon: <GiScrollUnfurled className="w-6 h-6" /> },
-  ]
+    {
+      id: "buildings",
+      label: "Buildings",
+      icon: <IoHammerSharp className="w-6 h-6" />,
+    },
+    {
+      id: "defenses",
+      label: "Defenses",
+      icon: <GiStoneTower className="w-6 h-6" />,
+    },
+    { id: "food", label: "Food", icon: <FaAppleAlt className="w-6 h-6" /> },
+    {
+      id: "research",
+      label: "Research",
+      icon: <GiScrollUnfurled className="w-6 h-6" />,
+    },
+  ];
 
   const menuItems = {
     buildings: [
-      { name: 'House', image: '/assets/buildings/house.webp' },
-      { name: 'Storage', image: '/assets/buildings/storage.png' },
-      { name: 'Lumber Camp', image: '/assets/buildings/lumbercamp.webp' },
-      { name: 'Mining Camp', image: '/assets/buildings/miningcamp.webp' },
-      { name: 'Blacksmith', image: '/assets/buildings/blacksmith.webp' },
+      { name: "House", image: "/assets/buildings/house.webp" },
+      { name: "Storage", image: "/assets/buildings/storage.png" },
+      { name: "Lumber Camp", image: "/assets/buildings/lumbercamp.webp" },
+      { name: "Mining Camp", image: "/assets/buildings/miningcamp.webp" },
+      { name: "Blacksmith", image: "/assets/buildings/blacksmith.webp" },
     ],
     defenses: [
-      { name: 'Barracks', image: '/assets/buildings/barracks.png' },
-      { name: 'Wall', image: '/assets/buildings/wall.png' },
-      { name: 'Tower', image: '/assets/buildings/tower.png' },
-      { name: 'Gate', image: '/assets/buildings/gate.png' },
+      { name: "Barracks", image: "/assets/buildings/barracks.png" },
+      { name: "Wall", image: "/assets/buildings/wall.png" },
+      { name: "Tower", image: "/assets/buildings/tower.png" },
+      { name: "Gate", image: "/assets/buildings/gate.png" },
     ],
     food: [
-      { name: 'Farm', image: '/assets/buildings/farm.png' },
-      { name: 'Mill', image: '/assets/buildings/mill.webp' },
-      { name: 'Bakery', image: '/assets/buildings/bakery.webp' },
-      { name: "Hunters post", image: '/assets/buildings/huntersPost.webp' },
+      { name: "Farm", image: "/assets/buildings/farm.png" },
+      { name: "Mill", image: "/assets/buildings/mill.webp" },
+      { name: "Bakery", image: "/assets/buildings/bakery.webp" },
+      { name: "Hunters post", image: "/assets/buildings/huntersPost.webp" },
     ],
     research: [
-      { name: 'Agriculture', image: '/assets/research/agriculture.png' },
-      { name: 'Metallurgy', image: '/assets/research/metallurgy.png' },
-      { name: 'Masonry', image: '/assets/research/masonry.png' },
-      { name: 'Archery', image: '/assets/research/archery.png' },
+      { name: "Agriculture", image: "/assets/research/agriculture.png" },
+      { name: "Metallurgy", image: "/assets/research/metallurgy.png" },
+      { name: "Masonry", image: "/assets/research/masonry.png" },
+      { name: "Archery", image: "/assets/research/archery.png" },
     ],
-  }
+  };
 
   const handleItemClick = (item: string) => {
-    const lowerCaseItem = item.toLowerCase().replace(/\s+/g, '');
+    const lowerCaseItem = item.toLowerCase().replace(/\s+/g, "");
     console.log(`Clicked on building: ${lowerCaseItem}`);
-    const scene = game?.scene.getScene('IslandScene') as any;
+    const scene = game?.scene.getScene("IslandScene") as any;
 
-    if (lowerCaseItem === 'wall') {
+    if (lowerCaseItem === "wall") {
       if (isPlacingWall) {
         // If wall is already selected, deselect it
         setIsPlacingWall(false);
@@ -201,23 +241,23 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
         });
       }
     }
-  }
+  };
 
   const handleCompassClick = () => {
-    const scene = game?.scene.getScene('IslandScene') as any
+    const scene = game?.scene.getScene("IslandScene") as any;
     if (scene && scene.rotateMap) {
-      scene.rotateMap(Math.PI / 2) // Rotate 90 degrees
+      scene.rotateMap(Math.PI / 2); // Rotate 90 degrees
     }
-  }
+  };
 
   const stopPlacingBuilding = () => {
-    const scene = game?.scene.getScene('IslandScene') as any;
+    const scene = game?.scene.getScene("IslandScene") as any;
     if (scene && scene.stopPlacingBuilding) {
       scene.stopPlacingBuilding();
       setSelectedBuilding(null);
       setIsPlacingWall(false);
     }
-  }
+  };
 
   useEffect(() => {
     const handleRightClick = (e: MouseEvent) => {
@@ -226,17 +266,20 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         stopPlacingBuilding();
       }
     };
-
-    document.addEventListener('contextmenu', handleRightClick);
-    document.addEventListener('keydown', handleKeyDown);
+    if (typeof document !== "undefined") {
+      document.addEventListener("contextmenu", handleRightClick);
+      document.addEventListener("keydown", handleKeyDown);
+    }
 
     return () => {
-      document.removeEventListener('contextmenu', handleRightClick);
-      document.removeEventListener('keydown', handleKeyDown);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("contextmenu", handleRightClick);
+        document.removeEventListener("keydown", handleKeyDown);
+      }
     };
   }, [game]);
 
@@ -244,11 +287,36 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
     <div className="absolute inset-0 select-none pointer-events-none">
       {/* Top-left: Resources */}
       <div className="absolute top-2 left-2 bg-black bg-opacity-70 text-white p-2 rounded-md flex lg:flex-row flex-col gap-4 text-sm">
-        <div className="flex items-center"><div className="w-6 h-6 bg-gray-700 rounded flex items-center justify-center mr-1"><GiWoodBeam className="w-4 h-4" /></div>{resources.wood}</div>
-        <div className="flex items-center"><div className="w-6 h-6 bg-gray-700 rounded flex items-center justify-center mr-1"><GiMeat className="w-4 h-4" /></div>{resources.food}</div>
-        <div className="flex items-center"><div className="w-6 h-6 bg-gray-700 rounded flex items-center justify-center mr-1"><GiGoldBar className="w-4 h-4" /></div>{resources.gold}</div>
-        <div className="flex items-center"><div className="w-6 h-6 bg-gray-700 rounded flex items-center justify-center mr-1"><GiStoneBlock className="w-4 h-4" /></div>{resources.stone}</div>
-        <div className="flex items-center"><div className="w-6 h-6 bg-gray-700 rounded flex items-center justify-center mr-1"><GiSwordman className="w-4 h-4" /></div>{resources.population}/200</div>
+        <div className="flex items-center">
+          <div className="w-6 h-6 bg-gray-700 rounded flex items-center justify-center mr-1">
+            <GiWoodBeam className="w-4 h-4" />
+          </div>
+          {resources.wood}
+        </div>
+        <div className="flex items-center">
+          <div className="w-6 h-6 bg-gray-700 rounded flex items-center justify-center mr-1">
+            <GiMeat className="w-4 h-4" />
+          </div>
+          {resources.food}
+        </div>
+        <div className="flex items-center">
+          <div className="w-6 h-6 bg-gray-700 rounded flex items-center justify-center mr-1">
+            <GiGoldBar className="w-4 h-4" />
+          </div>
+          {resources.gold}
+        </div>
+        <div className="flex items-center">
+          <div className="w-6 h-6 bg-gray-700 rounded flex items-center justify-center mr-1">
+            <GiStoneBlock className="w-4 h-4" />
+          </div>
+          {resources.stone}
+        </div>
+        <div className="flex items-center">
+          <div className="w-6 h-6 bg-gray-700 rounded flex items-center justify-center mr-1">
+            <GiSwordman className="w-4 h-4" />
+          </div>
+          {resources.population}/200
+        </div>
       </div>
 
       {/* Top-right: FPS, Compass, and Fullscreen */}
@@ -259,11 +327,21 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
           </div>
         )}
         <div className="flex gap-2">
-          <button className="bg-black bg-opacity-70 text-white p-2 rounded flex items-center justify-center pointer-events-auto" onClick={handleCompassClick}>
+          <button
+            className="bg-black bg-opacity-70 text-white p-2 rounded flex items-center justify-center pointer-events-auto"
+            onClick={handleCompassClick}
+          >
             <FaRegCompass className="w-5 h-5" />
           </button>
-          <button className="bg-black bg-opacity-70 text-white p-2 rounded flex items-center justify-center pointer-events-auto" onClick={handleFullscreen}>
-            {document.fullscreenElement ? <MdFullscreenExit className="w-5 h-5" /> : <MdFullscreen className="w-5 h-5" />}
+          <button
+            className="bg-black bg-opacity-70 text-white p-2 rounded flex items-center justify-center pointer-events-auto"
+            onClick={handleFullscreen}
+          >
+            {typeof document !== "undefined" && document.fullscreenElement ? (
+              <MdFullscreenExit className="w-5 h-5" />
+            ) : (
+              <MdFullscreen className="w-5 h-5" />
+            )}
           </button>
         </div>
       </div>
@@ -299,7 +377,9 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
               <button
                 key={category.id}
                 className={`p-2 rounded-lg flex items-center justify-center pointer-events-auto transition-colors duration-200 ${
-                  selectedCategory === category.id ? 'bg-blue-600 shadow-md' : 'bg-gray-700 hover:bg-gray-600'
+                  selectedCategory === category.id
+                    ? "bg-blue-600 shadow-md"
+                    : "bg-gray-700 hover:bg-gray-600"
                 }`}
                 onClick={() => setSelectedCategory(category.id)}
               >
@@ -309,23 +389,30 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
               </button>
             ))}
           </div>
-          <button 
+          <button
             className="bg-gray-700 hover:bg-gray-600 p-2 rounded-lg pointer-events-auto"
             onClick={() => setShowSettings(true)}
           >
             <MdSettings className="w-6 h-6" />
           </button>
         </div>
-        <hr className='opacity-35 py-1'/>
+        <hr className="opacity-35 py-1" />
         {/* Bottom section: Building stats and selection */}
         <div className="flex-grow flex flex-row-reverse gap-x-2">
           {/* Right side */}
           <div className="xl:w-1/3 w-[40%] border-l border-white/35 lg:px-5 pl-1 shadow-inner text-xs">
             {buildingStats ? (
               <>
-                <h3 className="font-bold text-base mb-1 capitalize">{buildingStats.name}</h3>
+                <h3 className="font-bold text-base mb-1 capitalize">
+                  {buildingStats.name}
+                </h3>
                 <div className="grid grid-cols-2 gap-1">
-                  <div className="flex items-center"><div className="w-6 h-6 bg-gray-600 rounded flex items-center justify-center mr-1"><FaHeart className="text-red-500 w-5 h-5" /></div> {buildingStats.health} / {buildingStats.maxHealth}</div>
+                  <div className="flex items-center">
+                    <div className="w-6 h-6 bg-gray-600 rounded flex items-center justify-center mr-1">
+                      <FaHeart className="text-red-500 w-5 h-5" />
+                    </div>{" "}
+                    {buildingStats.health} / {buildingStats.maxHealth}
+                  </div>
                   {/* Add more stats as needed */}
                 </div>
               </>
@@ -338,20 +425,33 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
           {/* Left side */}
           <div className="w-2/3 bg-gray p-2 rounded-lg">
             <div className="flex flex-wrap gap-3 overflow-x-auto">
-              {menuItems[selectedCategory as keyof typeof menuItems].map((item) => (
-                <button
-                  key={item.name}
-                  className={`flex-shrink-0 flex flex-col items-center p-1 rounded-lg pointer-events-auto transition-colors outline-none duration-200 ${
-                    (selectedBuilding === item.name.toLowerCase().replace(/\s+/g, '') || (isPlacingWall && item.name === 'Wall')) ? 'bg-green-600 shadow-md' : 'bg-gray-700 hover:bg-gray-500'
-                  }`}
-                  onClick={() => handleItemClick(item.name)}
-                >
-                  <div className="lg:w-20 lg:h-16 lg:max-w-20 max-w-7 w-7 h-4 relative">
-                    <Image src={item.image} alt={item.name} layout="fill" objectFit="contain" />
-                  </div>
-                  <div className="text-xs mt-1 truncate w-full">{item.name}</div>
-                </button>
-              ))}
+              {menuItems[selectedCategory as keyof typeof menuItems].map(
+                (item) => (
+                  <button
+                    key={item.name}
+                    className={`flex-shrink-0 flex flex-col items-center p-1 rounded-lg pointer-events-auto transition-colors outline-none duration-200 ${
+                      selectedBuilding ===
+                        item.name.toLowerCase().replace(/\s+/g, "") ||
+                      (isPlacingWall && item.name === "Wall")
+                        ? "bg-green-600 shadow-md"
+                        : "bg-gray-700 hover:bg-gray-500"
+                    }`}
+                    onClick={() => handleItemClick(item.name)}
+                  >
+                    <div className="lg:w-20 lg:h-16 lg:max-w-20 max-w-7 w-7 h-4 relative">
+                      <Image
+                        src={item.image}
+                        alt={item.name}
+                        layout="fill"
+                        objectFit="contain"
+                      />
+                    </div>
+                    <div className="text-xs mt-1 truncate w-full">
+                      {item.name}
+                    </div>
+                  </button>
+                )
+              )}
             </div>
           </div>
         </div>
@@ -364,15 +464,21 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
             <h2 className="text-xl font-bold mb-4">Settings</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Music Volume</label>
+                <label className="block text-sm font-medium mb-1">
+                  Music Volume
+                </label>
                 <input type="range" min="0" max="100" className="w-full" />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Sound Effects Volume</label>
+                <label className="block text-sm font-medium mb-1">
+                  Sound Effects Volume
+                </label>
                 <input type="range" min="0" max="100" className="w-full" />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Graphics Quality</label>
+                <label className="block text-sm font-medium mb-1">
+                  Graphics Quality
+                </label>
                 <select className="w-full bg-gray-700 rounded p-2">
                   <option>Low</option>
                   <option>Medium</option>
@@ -380,19 +486,21 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Show FPS</label>
+                <label className="block text-sm font-medium mb-1">
+                  Show FPS
+                </label>
                 <input
                   type="checkbox"
                   name="checkbox"
                   value="showFps"
-                  className='p-2'
+                  className="p-2"
                   onChange={() => setShowFps(!showFps)}
                   checked={showFps}
                 />
               </div>
             </div>
             <div className="mt-6 flex justify-end">
-              <button 
+              <button
                 className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded"
                 onClick={() => setShowSettings(false)}
               >
@@ -403,8 +511,7 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default GameUI
-
+export default GameUI;
