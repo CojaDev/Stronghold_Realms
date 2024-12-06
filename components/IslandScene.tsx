@@ -954,8 +954,8 @@ export class IslandScene extends Phaser.Scene {
       ) => {
         const zoomFactor = 0.1;
         const newZoom = deltaY > 0
-          ? Math.max(0.5, camera.zoom - zoomFactor)
-          : Math.min(2, camera.zoom + zoomFactor);
+          ? Math.max(0.6, camera.zoom - zoomFactor)
+          : Math.min(1.5, camera.zoom + zoomFactor);
         camera.setZoom(newZoom);
       }
     );
