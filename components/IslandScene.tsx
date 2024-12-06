@@ -16,19 +16,19 @@ interface Building {
 
 const BUILDINGS: { [key: string]: Building } = {
   house: { type: "house", sprite: "house", width: 3, height: 3, maxHp: 100 },
-  barracks: { type: "barracks", sprite: "barracks", width: 5, height: 5, maxHp: 200 },
+  barracks: { type: "barracks", sprite: "barracks", width: 6, height: 6, maxHp: 200 },
   blacksmith: { type: "blacksmith", sprite: "blacksmith", width: 4, height: 4, maxHp: 150 },
   bakery: { type: "bakery", sprite: "bakery", width: 2, height: 2, maxHp: 80 },
   lumbercamp: { type: "lumbercamp", sprite: "lumbercamp", width: 4, height: 4, maxHp: 120 },
   miningcamp: { type: "miningcamp", sprite: "miningcamp", width: 4, height: 4, maxHp: 120 },
   mill: { type: "mill", sprite: "mill", width: 4, height: 4, maxHp: 120 },
   hunterspost: { type: "hunterspost", sprite: "hunterspost", width: 3, height: 3, maxHp: 120 },
-  farm: { type: "farm", sprite: "farm", width: 5, height: 2, maxHp: 120 },
+  field: { type: "field", sprite: "field", width: 5, height: 5, maxHp: 120 },
   storage: { type: "storage", sprite: "storage", width: 2, height: 2, maxHp: 150 },
   wall: { type: "wall", sprite: "wall", width: 1, height: 1, maxHp: 50 },
   tower: { type: "tower", sprite: "tower", width: 4, height: 4, maxHp: 300 },
   gate: { type: "gate", sprite: "gate", width: 5, height: 1, maxHp: 250 },
-  castle: { type: "castle", sprite: "castle", width: 5, height: 5, maxHp: 1000, offsetX: -1, offsetY: 2 },
+  castle: { type: "castle", sprite: "castle", width: 6, height: 6, maxHp: 1000, offsetX: 0, offsetY: 2 },
 };
 
 export class IslandScene extends Phaser.Scene {
@@ -66,6 +66,7 @@ export class IslandScene extends Phaser.Scene {
   private minimapData: ImageData | null = null;
   private lastMinimapUpdateTime: number = 0;
   private minimapUpdateInterval: number = 3000;
+  private minNaturalObjectDistance: number = 40;
 
   constructor() {
     super("IslandScene");
@@ -83,8 +84,13 @@ export class IslandScene extends Phaser.Scene {
       frameHeight: this.tileHeight,
     });
     this.load.image("castle", "/assets/buildings/townHall.webp");
-    this.load.image('tree', '/assets/nature/tree2.webp');
-    this.load.image('rock', '/assets/nature/rock.webp');
+      this.load.image('tree', '/assets/nature/tree.webp');
+    this.load.image('tree2', '/assets/nature/tree2.webp');
+    this.load.image('tree3', '/assets/nature/tree3.webp');
+    this.load.image('tree4', '/assets/nature/tree4.webp');
+    this.load.image('tree5', '/assets/nature/tree5.webp');
+    this.load.image('rock1', '/assets/nature/rock.webp');
+    this.load.image('rock2', '/assets/nature/rock2.webp');
     Object.values(BUILDINGS).forEach((building) => {
       this.load.image(
         building.sprite,
@@ -213,7 +219,7 @@ export class IslandScene extends Phaser.Scene {
       case 'wall': return 0x663300; // Brown
       case 'tower': return 0xFF3300; // Orange
       case 'gate': return 0xFFCC00; // Yellow
-      case 'farm': return 0x99CC00; // Light green
+      case 'field': return 0x99CC00; // Light green
       case 'bakery': return 0xFFCC99; // Light orange
       case 'stockpile': return 0x996633; // Dark brown
       default: return 0xFFFFFF; // White for unknown buildings
@@ -248,13 +254,20 @@ export class IslandScene extends Phaser.Scene {
   }
 
   private spawnNaturalObjects() {
+    const castlePositions = this.spawnPoints.map(point => ({
+      x: Math.floor((point.x - this.mapWidth * this.tileWidth / 2) / this.tileWidth),
+      y: Math.floor(point.y / this.tileHeight)
+    }));
+  
     this.naturalObjectManager.spawnNaturalObjects(
       this.mapWidth,
       this.mapHeight,
       this.isValidTile.bind(this),
       (x: number, y: number) => this.terrainData[y][x],
       this.tileToIsometricCoordinates.bind(this),
-      this.calculateDepth.bind(this)
+      this.calculateDepth.bind(this),
+      castlePositions,
+      this.minNaturalObjectDistance
     );
 
     // Emit an event for each natural object
@@ -722,8 +735,9 @@ export class IslandScene extends Phaser.Scene {
     const scale = 0.02;
     const octaves = 6;
     const persistence = 0.5;
-    const lacunarity = 2.0;
-    const waterThreshold = 0.18;
+    const lacunarity = 1.4;
+    const waterThreshold = 0.145;
+    const forestThreshold = 0.59; // Increased forest threshold
     const centerX = this.mapWidth / 2;
     const centerY = this.mapHeight / 2;
     const maxDistance = Math.sqrt(
@@ -760,7 +774,7 @@ export class IslandScene extends Phaser.Scene {
           tileIndex = combinedValue < waterThreshold - 0.05 ? 0 : 1; // Deep or shallow water
         } else if (combinedValue < waterThreshold + 0.1) {
           tileIndex = 2; // Sand
-        } else if (combinedValue < 0.7) {
+        } else if (combinedValue < forestThreshold) {
           tileIndex = 3; // Grass
         } else if (combinedValue < 0.85) {
           tileIndex = 4; // Forest
@@ -773,40 +787,34 @@ export class IslandScene extends Phaser.Scene {
     }
     return data;
   }
-
+  
   private generateSpawnPoints() {
-    const minDistance = 40; // Increased for larger maps
-    const attempts = 1000;
+    const playerCount = 4; // Supports up to 4 players
+    const centerX = this.mapWidth / 2;
+    const centerY = this.mapHeight / 2;
+    const radius = Math.min(this.mapWidth, this.mapHeight) * 0.35; // 35% of map size
+    const minDistanceBetweenCastles = radius * 0.6; // Minimum distance between castles
 
-    for (let i = 0; i < 4; i++) {
-      // Increased number of spawn points
+    const angles = [0, Math.PI / 2, Math.PI, 3 * Math.PI / 2]; // Fixed angles for even distribution
+
+    for (let i = 0; i < playerCount; i++) {
       let placed = false;
       let attempts = 0;
+      const maxAttempts = 100;
 
-      while (!placed && attempts < 2000) {
-        const x = Phaser.Math.Between(
-          Math.floor(this.mapWidth * 0.1),
-          Math.floor(this.mapWidth * 0.9)
-        );
-        const y = Phaser.Math.Between(
-          Math.floor(this.mapHeight * 0.1),
-          Math.floor(this.mapHeight * 0.9)
-        );
+      while (!placed && attempts < maxAttempts) {
+        const angle = angles[i] + (Math.random() * 0.5 - 0.25); // Add some randomness to the angle
+        const distance = radius * (0.7 + Math.random() * 0.3); // Random distance between 70% and 100% of radius
+        const x = Math.floor(centerX + Math.cos(angle) * distance);
+        const y = Math.floor(centerY + Math.sin(angle) * distance);
 
         if (this.isValidSpawnPoint(x, y)) {
-          const isoX =
-            ((x - y) * this.tileWidth) / 2 +
-            (this.mapWidth * this.tileWidth) / 2;
-          const isoY = ((x + y) * this.tileHeight) / 2;
+          const isoCoords = this.tileToIsometricCoordinates(x, y);
+          const point = new Phaser.Math.Vector2(isoCoords.x, isoCoords.y);
 
-          const point = new Phaser.Math.Vector2(isoX, isoY);
-
-          if (
-            this.spawnPoints.every(
-              (p) => p.distance(point) >= minDistance * this.tileWidth + this.tileHeight
-            )
-          ) {
-            this.spawnPoints.push(point);
+          if (this.isMinimumDistanceFromOtherCastles(x, y, minDistanceBetweenCastles)) {
+            this.spawnPoints.push(new Phaser.Math.Vector2(x, y));
+            this.clearAreaAroundCastle(x, y);
             placed = true;
           }
         }
@@ -819,14 +827,25 @@ export class IslandScene extends Phaser.Scene {
       }
     }
   }
-
+  
+  
   private isValidSpawnPoint(x: number, y: number): boolean {
-    // Check a 3x3 area for valid placement
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const tileType = this.terrainData[y + dy]?.[x + dx];
-        if (tileType !== 3 && tileType !== 4) {
-          // Allow grass and forest
+    const castleSize = 6; // Assuming castle size is 6x6
+    const halfCastleSize = Math.floor(castleSize / 2);
+
+    // Check if the entire castle area is within the map bounds and on valid terrain
+    for (let dy = -halfCastleSize; dy < halfCastleSize; dy++) {
+      for (let dx = -halfCastleSize; dx < halfCastleSize; dx++) {
+        const tileX = x + dx;
+        const tileY = y + dy;
+        
+        if (tileX < 0 || tileX >= this.mapWidth || tileY < 0 || tileY >= this.mapHeight) {
+          return false;
+        }
+        
+        const tileType = this.terrainData[tileY][tileX];
+        if (tileType < 3 || tileType > 4) {
+          // Only allow on grass tiles (3 and 4)
           return false;
         }
       }
@@ -834,14 +853,38 @@ export class IslandScene extends Phaser.Scene {
     return true;
   }
 
+  private isMinimumDistanceFromOtherCastles(x: number, y: number, minDistance: number): boolean {
+    return this.spawnPoints.every(point => {
+      const dx = point.x - x;
+      const dy = point.y - y;
+      return Math.sqrt(dx * dx + dy * dy) >= minDistance;
+    });
+  }
+
+  
+  private clearAreaAroundCastle(x: number, y: number) {
+    const radius = 10; // Clear area radius
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const tileX = x + dx;
+        const tileY = y + dy;
+        if (tileX >= 0 && tileX < this.mapWidth && tileY >= 0 && tileY < this.mapHeight) {
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance <= radius) {
+            this.naturalObjectManager.markTileAsUnavailable(tileX, tileY);
+          }
+        }
+      }
+    }
+  }
+
   private placeInitialCastles() {
     this.spawnPoints.forEach((point, index) => {
       const castle = BUILDINGS.castle;
-      const x = Math.floor(point.x / this.tileWidth);
-      const y = Math.floor(point.y / this.tileHeight);
-      this.placeBuilding(x, y, castle);
+      this.placeBuilding(point.x, point.y, castle);
     });
   }
+  
   private damageBuilding(building: Phaser.GameObjects.Image, damage: number) {
     const currentHp = building.getData("hp");
     const newHp = Math.max(0, currentHp - damage);
@@ -883,18 +926,21 @@ export class IslandScene extends Phaser.Scene {
 
     camera.setBounds(0, 0, mapWidthPixels, mapHeightPixels);
 
+    // Focus on the first castle (assumed to be the player's castle)
     if (this.spawnPoints.length > 0) {
-      camera.centerOn(this.spawnPoints[0].x, this.spawnPoints[0].y);
+      const playerCastle = this.spawnPoints[0];
+      const isoCoords = this.tileToIsometricCoordinates(playerCastle.x, playerCastle.y);
+      camera.centerOn(isoCoords.x, isoCoords.y);
     } else {
+      console.warn("No castles found to focus the camera on.");
       camera.centerOn(mapWidthPixels / 2, mapHeightPixels / 2);
     }
 
+    // Set up camera controls
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
-      if (pointer.isDown) {
-        if (pointer.rightButtonDown()) {
-          camera.scrollX -= (pointer.x - pointer.prevPosition.x) / camera.zoom;
-          camera.scrollY -= (pointer.y - pointer.prevPosition.y) / camera.zoom;
-        }
+      if (pointer.isDown && pointer.rightButtonDown()) {
+        camera.scrollX -= (pointer.x - pointer.prevPosition.x) / camera.zoom;
+        camera.scrollY -= (pointer.y - pointer.prevPosition.y) / camera.zoom;
       }
     });
 
@@ -906,15 +952,15 @@ export class IslandScene extends Phaser.Scene {
         deltaX: number,
         deltaY: number
       ) => {
-        const zoomFactor = 0.11;
-        const newZoom =
-          deltaY > 0
-            ? Math.max(0.4, camera.zoom - zoomFactor)
-            : Math.min(1, camera.zoom + zoomFactor);
+        const zoomFactor = 0.1;
+        const newZoom = deltaY > 0
+          ? Math.max(0.5, camera.zoom - zoomFactor)
+          : Math.min(2, camera.zoom + zoomFactor);
         camera.setZoom(newZoom);
       }
     );
   }
+
 
   private onCastleClick(index: number) {
     console.log(`Clicked on castle ${index + 1}`);

@@ -25,9 +25,6 @@ import { IoHammerSharp } from "react-icons/io5";
 interface GameUIProps {
   game: Phaser.Game | null;
 }
-const imageLoader = ({ src }: { src: string }) => {
-  return `${process.env.NEXT_PUBLIC_VERCEL_URL || ""}${src}`;
-};
 
 const GameUI: React.FC<GameUIProps> = ({ game }) => {
   const [showFps, setShowFps] = useState(true);
@@ -167,20 +164,20 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
   const menuItems = {
     buildings: [
       { name: "House", image: "/assets/buildings/house.webp" },
-      { name: "Storage", image: "/assets/buildings/storage.png" },
+      { name: "Storage", image: "/assets/buildings/storage.webp" },
       { name: "Lumber Camp", image: "/assets/buildings/lumbercamp.webp" },
       { name: "Mining Camp", image: "/assets/buildings/miningcamp.webp" },
       { name: "Blacksmith", image: "/assets/buildings/blacksmith.webp" },
     ],
     defenses: [
-      { name: "Barracks", image: "/assets/buildings/barracks.png" },
-      { name: "Wall", image: "/assets/buildings/wall.png" },
-      { name: "Tower", image: "/assets/buildings/tower.png" },
-      { name: "Gate", image: "/assets/buildings/gate.png" },
+      { name: "Barracks", image: "/assets/buildings/barracks.webp" },
+      { name: "Wall", image: "/assets/buildings/wall.webp" },
+      { name: "Tower", image: "/assets/buildings/tower.webp" },
+      { name: "Gate", image: "/assets/buildings/gate.webp" },
     ],
     food: [
-      { name: "Farm", image: "/assets/buildings/farm.png" },
       { name: "Mill", image: "/assets/buildings/mill.webp" },
+      { name: "Field", image: "/assets/buildings/Field.webp" },
       { name: "Bakery", image: "/assets/buildings/bakery.webp" },
       { name: "Hunters post", image: "/assets/buildings/huntersPost.webp" },
     ],
@@ -443,7 +440,6 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
                   >
                     <div className="lg:w-20 lg:h-16 lg:max-w-20 max-w-7 w-7 h-4 relative">
                       <Image
-                        loader={imageLoader}
                         src={item.image}
                         alt={item.name}
                         layout="fill"
