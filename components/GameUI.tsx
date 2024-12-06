@@ -177,9 +177,9 @@ const GameUI: React.FC<GameUIProps> = ({ game }) => {
     ],
     food: [
       { name: "Mill", image: "/assets/buildings/mill.webp" },
-      { name: "Field", image: "/assets/buildings/Field.webp" },
+      { name: "Field", image: "/assets/buildings/field.webp" },
       { name: "Bakery", image: "/assets/buildings/bakery.webp" },
-      { name: "Hunters post", image: "/assets/buildings/huntersPost.webp" },
+      { name: "Hunters post", image: "/assets/buildings/hunterspost.webp" },
     ],
     research: [
       { name: "Agriculture", image: "/assets/research/agriculture.png" },
