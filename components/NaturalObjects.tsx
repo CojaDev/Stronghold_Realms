@@ -335,7 +335,7 @@ export class NaturalObjectManager {
     castlePositions: { x: number; y: number }[],
     minNaturalObjectDistance: number
   ) {
-    const rockCount = Math.floor(mapWidth * mapHeight * 0.0034); // 0.5% of tiles will have rocks
+    const rockCount = Math.floor(mapWidth * mapHeight * 0.0034);
 
     for (let i = 0; i < rockCount; i++) {
       const x = Phaser.Math.Between(0, mapWidth - 1);
