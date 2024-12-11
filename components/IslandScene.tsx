@@ -159,6 +159,7 @@ export class IslandScene extends Phaser.Scene {
   }
 
   create() {
+    this.cameras.main.setBackgroundColor(0x141414);
     this.wallPreviewGraphics = this.add.graphics();
     this.terrainData = this.generateTerrainData();
     this.createIsometricMap();
@@ -172,10 +173,6 @@ export class IslandScene extends Phaser.Scene {
     this.input.on("pointerup", this.handlePointerUp, this);
     this.spawnInitialPeasants();
     this.events.on('peasantSelectionChanged', this.onPeasantSelectionChanged, this);
-    const debugButton = this.add.text(10, 10, 'Spawn Peasant', { backgroundColor: '#000' })
-    .setInteractive()
-    .on('pointerdown', () => this.debugSpawnPeasant());
-  debugButton.setScrollFactor(0);
     // Update the event listener to use a separate method for handling object clicks
     this.input.on('gameobjectdown', this.handleObjectClick, this);
     // Initialize the walls array
@@ -370,11 +367,11 @@ export class IslandScene extends Phaser.Scene {
     const x = -width / 2;
     const y = -unit.height - 10;
 
-    const background = this.add.rectangle(x, y, width, height, 0x000000);
+    const background = this.add.rectangle(x, y, width + 1.5, height + 1.5, 0x000000);
     const bar = this.add.rectangle(x, y, width, height, 0x00ff00);
 
-    background.setOrigin(0, 0.5);
-    bar.setOrigin(0, 0.5);
+    background.setOrigin(0.02, -8.5);
+    bar.setOrigin(0, -11.2);
 
     unit.setData('healthBar', bar);
     unit.setData('healthBackground', background);
@@ -746,7 +743,7 @@ export class IslandScene extends Phaser.Scene {
       this.handleSelection(pointer);
     }
 
-    if (pointer.leftButtonDown()) {
+    if (pointer.leftButtonDown() && this.isPlacingWall === false && this.isPlacingBuilding === false ) {
       const clickedObject = this.getObjectAtPointer(pointer);
       if (!clickedObject) {
         this.deselectAllPeasants();
