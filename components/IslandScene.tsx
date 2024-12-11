@@ -4,6 +4,8 @@ import { createNoise2D, createNoise3D } from "simplex-noise";
 import { NaturalObjectManager } from './NaturalObjects';
 import { TerrainVariationManager } from './TerrainVariations';
 import { HarvestingMechanic } from './HarvestingMechanic';
+import { Peasant } from './Peasant';
+import { js as EasyStar } from "easystarjs";
 interface Building {
   type: string;
   sprite: string;
@@ -31,11 +33,16 @@ const BUILDINGS: { [key: string]: Building } = {
   castle: { type: "castle", sprite: "castle", width: 6, height: 6, maxHp: 1000, offsetX: 0, offsetY: 2 },
 };
 
+
 export class IslandScene extends Phaser.Scene {
-  private mapWidth: number = 200;
-  private mapHeight: number = 200;
-  private tileWidth: number = 64;
-  private tileHeight: number = 32;
+  private peasants: Peasant[] = [];
+  private selectedPeasant: Peasant | null = null;
+  private selectedPeasants: Peasant[] = [];
+  public pathfinder: EasyStar;
+  public mapWidth: number = 200;
+  public mapHeight: number = 200;
+  public tileWidth: number = 64;
+  public tileHeight: number = 32;
   private wallClickThreshold: number = 200;
   private wallClickStartTime: number = 0;
   private noise2D: (x: number, y: number) => number;
@@ -68,6 +75,35 @@ export class IslandScene extends Phaser.Scene {
   private minimapUpdateInterval: number = 3000;
   private minNaturalObjectDistance: number = 40;
 
+  private playerResources: {
+    wood: number;
+    food: number;
+    gold: number;
+    stone: number;
+    population: number;
+    maxPopulation: number;
+  };
+
+  private buildingCosts: { [key: string]: { wood: number; stone: number; gold: number } } = {
+    house: { wood: 50, stone: 0, gold: 0 },
+    storage: { wood: 100, stone: 0, gold: 0 },
+    lumbercamp: { wood: 150, stone: 0, gold: 0 },
+    miningcamp: { wood: 150, stone: 0, gold: 0 },
+    blacksmith: { wood: 200, stone: 0, gold: 50 },
+    barracks: { wood: 200, stone: 0, gold: 100 },
+    wall: { wood: 0, stone: 50, gold: 0 },
+    tower: { wood: 0, stone: 150, gold: 50 },
+    gate: { wood: 50, stone: 100, gold: 0 },
+    mill: { wood: 100, stone: 0, gold: 0 },
+    field: { wood: 50, stone: 0, gold: 0 },
+    bakery: { wood: 150, stone: 0, gold: 50 },
+    hunterspost: { wood: 100, stone: 0, gold: 0 },
+    castle: { wood: 0, stone: 0, gold: 0 },
+  };
+
+  private moveMarker: Phaser.GameObjects.Sprite | null = null;
+  private moveMarkerTimer: Phaser.Time.TimerEvent | null = null;
+
   constructor() {
     super("IslandScene");
     this.noise2D = createNoise2D();
@@ -75,6 +111,15 @@ export class IslandScene extends Phaser.Scene {
     this.naturalObjectManager = new NaturalObjectManager(this);
     this.terrainVariationManager = new TerrainVariationManager(this);
     this.harvestingMechanic = new HarvestingMechanic(this);
+    this.playerResources = {
+      wood: 300,
+      food: 200,
+      gold: 100,
+      stone: 100,
+      population: 3,
+      maxPopulation: 5
+    };
+    this.pathfinder = new EasyStar();
   }
 
   preload() {
@@ -91,12 +136,23 @@ export class IslandScene extends Phaser.Scene {
     this.load.image('tree5', '/assets/nature/tree5.webp');
     this.load.image('rock1', '/assets/nature/rock.webp');
     this.load.image('rock2', '/assets/nature/rock2.webp');
+    this.load.image("peasant", "/assets/units/peasant.webp");
+    this.load.image("peasantfront", "/assets/units/peasantfront.webp");
+    this.load.image("peasantback", "/assets/units/peasantback.webp");
+    this.load.image("peasantleft", "/assets/units/peasantleft.webp");
+    this.load.image("peasantright", "/assets/units/peasantright.webp");
+    this.load.image("peasantfrontleft", "/assets/units/peasantfrontleft.webp");
+    this.load.image("peasantfrontright", "/assets/units/peasantfrontright.webp");
+    this.load.image("peasantbackleft", "/assets/units/peasantbackleft.webp");
+    this.load.image("peasantbackright", "/assets/units/peasantbackright.webp");
     Object.values(BUILDINGS).forEach((building) => {
       this.load.image(
         building.sprite,
         `/assets/buildings/${building.sprite}.webp`
       );
     });
+    this.load.spritesheet('green-marker', '/assets/cursors/green_marker.gif', { frameWidth: 64, frameHeight: 64 });
+    this.load.spritesheet('red-marker', '/assets/cursors/red_marker.gif', { frameWidth: 64, frameHeight: 64 });
   }
 
   create() {
@@ -111,7 +167,14 @@ export class IslandScene extends Phaser.Scene {
     this.input.on("pointerdown", this.handlePointerDown, this);
     this.input.on("pointermove", this.handlePointerMove, this);
     this.input.on("pointerup", this.handlePointerUp, this);
-
+    this.spawnInitialPeasants();
+    this.events.on('peasantSelectionChanged', this.onPeasantSelectionChanged, this);
+    const debugButton = this.add.text(10, 10, 'Spawn Peasant', { backgroundColor: '#000' })
+    .setInteractive()
+    .on('pointerdown', () => this.debugSpawnPeasant());
+  debugButton.setScrollFactor(0);
+    // Update the event listener to use a separate method for handling object clicks
+    this.input.on('gameobjectdown', this.handleObjectClick, this);
     // Initialize the walls array
     for (let y = 0; y < this.mapHeight; y++) {
       this.walls[y] = [];
@@ -125,16 +188,287 @@ export class IslandScene extends Phaser.Scene {
     this.wallPreviewGraphics.setDepth(Number.MAX_SAFE_INTEGER);
     this.createMinimapData();
     if(this.input.keyboard){
-      
       this.input.keyboard.on('keydown-ESC', this.stopPlacingBuilding, this);
     }
+    this.events.emit('objectSelected', null);
+    this.events.emit('resourcesUpdated', this.playerResources);
+    this.setupPathfinding();
+
+    this.anims.create({
+      key: 'green-marker-anim',
+      frames: this.anims.generateFrameNumbers('green-marker', {}),
+      frameRate: 16,
+      repeat: -1
+    });
+
+    this.anims.create({
+      key: 'red-marker-anim',
+      frames: this.anims.generateFrameNumbers('red-marker', {}),
+      frameRate: 16,
+      repeat: -1
+    });
   }
+
   update(time: number, delta: number) {
+    super.update(time, delta);
+    this.peasants.forEach(peasant => peasant.update());
     if (time - this.lastMinimapUpdateTime > this.minimapUpdateInterval) {
       this.updateMinimapData();
       this.lastMinimapUpdateTime = time;
     }
   }
+
+  private spawnInitialPeasants() {
+    console.log("Spawning initial peasants");
+    for (let i = 0; i < 3; i++) {
+      const spawnPoint = this.spawnPoints[0]; // Assuming the first spawn point is the player's
+      const offsetX = (i - 1) * 86; // Spread peasants horizontally
+      const isoCoords = this.tileToIsometricCoordinates(spawnPoint.x + i*3, spawnPoint.y+3);
+      const peasant = new Peasant(this, isoCoords.x + offsetX, isoCoords.y);
+      this.add.existing(peasant);
+      peasant.setDepth(this.calculateDepth(spawnPoint.x + i, spawnPoint.y, 1));
+      this.peasants.push(peasant);
+      console.log(`Peasant ${i + 1} spawned at (${isoCoords.x + offsetX}, ${isoCoords.y})`);
+    }
+  }
+
+  private debugSpawnPeasant() {
+    const x = Phaser.Math.Between(0, this.mapWidth - 1);
+    const y = Phaser.Math.Between(0, this.mapHeight - 1);
+    const isoCoords = this.tileToIsometricCoordinates(x, y);
+    const peasant = new Peasant(this, isoCoords.x, isoCoords.y);
+    this.add.existing(peasant);
+    peasant.setDepth(this.calculateDepth(x, y, 1));
+    peasant.setInteractive();
+    peasant.on("pointerdown", () => this.handleSelection({ x: peasant.x, y: peasant.y, event: { shiftKey: false } } as Phaser.Input.Pointer));
+    this.peasants.push(peasant);
+    console.log(`Debug: Peasant spawned at (${isoCoords.x}, ${isoCoords.y})`);
+  }
+
+  private onPeasantSelectionChanged = (peasant: Peasant) => {
+    console.log(`Peasant selection changed: ${peasant.isSelected ? 'selected' : 'deselected'}`);
+    if (peasant.isSelected) {
+      if (!this.selectedPeasants.includes(peasant)) {
+        this.selectedPeasants.push(peasant);
+      }
+    } else {
+      const index = this.selectedPeasants.indexOf(peasant);
+      if (index > -1) {
+        this.selectedPeasants.splice(index, 1);
+      }
+    }
+    this.events.emit('objectSelected', peasant.isSelected ? peasant.getStats() : null);
+  };
+
+  private handlePeasantMovement(pointer: Phaser.Input.Pointer) {
+    if (this.selectedPeasant) {
+      const targetCoords = this.worldToTileCoordinates(pointer.worldX, pointer.worldY);
+      if (this.isWalkableTile(targetCoords.x, targetCoords.y)) {
+        const isoCoords = this.tileToIsometricCoordinates(targetCoords.x, targetCoords.y);
+        this.selectedPeasant.moveTo(isoCoords.x, isoCoords.y);
+        console.log(`Peasant moving to (${isoCoords.x}, ${isoCoords.y})`);
+      } else {
+        console.log("Invalid target location for peasant");
+      }
+    }
+  }
+
+  private setupPathfinding() {
+    const grid = [];
+    for (let y = 0; y < this.mapHeight; y++) {
+      const row = [];
+      for (let x = 0; x < this.mapWidth; x++) {
+        row.push(this.isWalkableTile(x, y) ? 0 : 1);
+      }
+      grid.push(row);
+    }
+    this.pathfinder.setGrid(grid);
+    this.pathfinder.setAcceptableTiles([0]);
+    this.pathfinder.enableDiagonals();
+    this.pathfinder.enableCornerCutting();
+  }
+
+  private isWalkableTile(x: number, y: number): boolean {
+    return this.isValidTile(x, y) && !this.isDeepWater(x, y) && !this.isOccupiedByBuilding(x, y);
+  }
+
+  private isDeepWater(x: number, y: number): boolean {
+    const tileType = this.terrainData[y]?.[x];
+    return tileType === 0; // Assuming 0 is the deep water tile type
+  }
+
+  private isOccupiedByBuilding(x: number, y: number): boolean {
+    return this.buildings.some(building => {
+      const bx = building.getData('gridX');
+      const by = building.getData('gridY');
+      const width = building.getData('width');
+      const height = building.getData('height');
+      return x >= bx && x < bx + width && y >= by && y < by + height;
+    });
+  }
+  private spawnWorker(x: number, y: number, buildingType: string) {
+    const isoCoords = this.tileToIsometricCoordinates(x, y);
+    const worker = new Peasant(this, isoCoords.x, isoCoords.y);
+    this.add.existing(worker);
+    worker.setDepth(this.calculateDepth(x, y, 1));
+    this.peasants.push(worker);
+    console.log(`Worker spawned at (${isoCoords.x}, ${isoCoords.y}) for ${buildingType}`);
+  }
+
+  private canAffordBuilding(cost: { wood: number; stone: number; gold: number }): boolean {
+    return (
+      this.playerResources.wood >= cost.wood &&
+      this.playerResources.stone >= cost.stone &&
+      this.playerResources.gold >= cost.gold
+    );
+  }
+
+  // Add this method to get building costs
+  public getBuildingCost(buildingType: string): { wood: number; stone: number; gold: number } | undefined {
+    return this.buildingCosts[buildingType.toLowerCase()];
+  }
+
+  // Add this method to get current resources
+  public getPlayerResources() {
+    return this.playerResources;
+  }
+
+  private handleObjectClick = (pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.GameObject) => {
+    if (gameObject instanceof Phaser.GameObjects.Image) {
+      const objectType = gameObject.getData('type');
+      console.log("Clicked object type:", objectType);
+      
+      if (objectType === 'tree' || objectType === 'rock') {
+        console.log("Clicked on natural object:", objectType);
+        this.handleNaturalObjectClick(gameObject as Phaser.GameObjects.Image);
+      } else if (objectType === 'building') {
+        console.log("Clicked on building:", gameObject.getData('name'));
+        this.onBuildingClick(gameObject as Phaser.GameObjects.Image);
+      }
+    }
+  }
+
+  private handleNaturalObjectClick(object: Phaser.GameObjects.Image) {
+    const type = object.getData('type');
+    const hp = object.getData('hp');
+    const maxHp = object.getData('maxHp');
+    const harvestTime = object.getData('harvestTime');
+    const resourceYield = object.getData('resourceYield');
+
+    console.log(`Natural object clicked: ${type}, HP: ${hp}/${maxHp}, Harvest Time: ${harvestTime}, Resource Yield: ${resourceYield}`);
+    this.events.emit('naturalObjectSelected', { type, hp, maxHp, harvestTime, resourceYield });
+  }
+
+
+  private addHealthBar(building: Phaser.GameObjects.Image) {
+    const camera = this.cameras.main;
+    const width = 60 *  camera.zoom;
+    const height = 7 *  camera.zoom;
+    const x = building.x - width / 2;
+    const y = building.y - building.height - 10;
+
+    const background = this.add.rectangle(x, y, width+1.5, height+1.5, 0x000000);
+    const bar = this.add.rectangle(x, y, width, height, 0x00ff00);
+
+    background.setOrigin(0.01, 0.5);
+    bar.setOrigin(0, 0.5);
+
+    building.setData('healthBar', bar);
+    building.setData('healthBackground', background);
+
+    this.updateHealthBar(building);
+  }
+
+  private updateHealthBar(building: Phaser.GameObjects.Image) {
+    const camera = this.cameras.main;
+    const bar = building.getData('healthBar') as Phaser.GameObjects.Rectangle;
+    const background = building.getData('healthBackground') as Phaser.GameObjects.Rectangle;
+    const hp = building.getData('hp');
+    const maxHp = building.getData('maxHp');
+
+    const width = (60 *  camera.zoom) * (hp / maxHp);
+    bar.width = width;
+
+    const depth = building.depth + 2;
+    bar.setDepth(depth);
+    background.setDepth(depth);
+  }
+
+  private onBuildingClick(building: Phaser.GameObjects.Image) {
+    const buildingData = {
+      type: building.getData('type'),
+      name: building.getData('name'),
+      hp: building.getData('hp'),
+      maxHp: building.getData('maxHp'),
+      owner: building.getData('owner'),
+      upgrades: this.getBuildingUpgrades(building.getData('type')),
+    };
+
+    console.log("Building clicked:", buildingData);
+    this.events.emit('buildingSelected', buildingData);
+  }
+
+  private getBuildingUpgrades(buildingType: string): string[] {
+    switch (buildingType) {
+      case 'mill':
+        return ['Production Upgrade'];
+      case 'field':
+        return ['Wheat Field', 'Apple Field'];
+      case 'bakery':
+        return ['Production Upgrade'];
+      case 'blacksmith':
+        return ['Weapon Class Upgrade'];
+      case 'barracks':
+        return ['Unlock New Units'];
+      case 'lumbercamp':
+        return ['Production Upgrade'];
+      case 'storage':
+        return ['Food Storage', 'Material Storage'];
+      case 'hunterspost':
+        return ['Weapon Upgrade'];
+      default:
+        return [];
+    }
+  }
+
+  public upgradeBuilding(buildingType: string, upgradeName: string) {
+    // Implement upgrade logic here
+    console.log(`Upgrading ${buildingType} with ${upgradeName}`);
+    // Update the building's properties based on the upgrade
+    // You may need to find the specific building instance and update its data
+  }
+
+  
+  private onObjectClick(gameObject: Phaser.GameObjects.GameObject) {
+    if (gameObject instanceof Phaser.GameObjects.Image) {
+      const objectType = gameObject.getData('type');
+      const objectData = this.getObjectData(gameObject);
+      this.events.emit('objectSelected', { type: objectType, ...objectData });
+    }
+  }
+
+  private getObjectData(gameObject: Phaser.GameObjects.Image) {
+    const type = gameObject.getData('type');
+    const baseData = {
+      hp: gameObject.getData('hp'),
+      maxHp: gameObject.getData('maxHp'),
+    };
+
+    if (type === 'tree' || type === 'rock') {
+      return baseData;
+    }
+
+    if (type === 'building') {
+      return {
+        ...baseData,
+        name: gameObject.getData('name') || type,
+        upgrades: this.getBuildingUpgrades(type),
+      };
+    }
+
+    return baseData;
+  }
+
 
   private createMinimapData() {
     const minimapSize = 200;
@@ -311,11 +645,18 @@ export class IslandScene extends Phaser.Scene {
 
   private handlePointerDown(pointer: Phaser.Input.Pointer) {
     if (pointer.rightButtonDown()) {
-      this.input.setDefaultCursor('url(/assets/cursors/main.png), pointer');
-      this.isDraggingCamera = true;
-      this.lastPointerPosition = { x: pointer.x, y: pointer.y };
+      if (this.selectedPeasants.length > 0) {
+        this.moveSelectedPeasants(pointer);
+      } else {
+        this.input.setDefaultCursor('url(/assets/cursors/main.png), pointer');
+        this.isDraggingCamera = true;
+        this.lastPointerPosition = { x: pointer.x, y: pointer.y };
+      }
       this.stopPlacingBuilding();
       return;
+    }
+    if (pointer.leftButtonDown()) {
+      this.handleSelection(pointer);
     }
 
     if (this.isPlacingWall && pointer.leftButtonDown()) {
@@ -343,8 +684,6 @@ export class IslandScene extends Phaser.Scene {
       const endTile = this.worldToTileCoordinates(pointer.worldX, pointer.worldY);
       this.previewWall(this.wallStartTile, endTile);
 
-      // Debug log
-      console.log('Updating wall preview', this.wallStartTile, endTile);
     } else if (this.isPlacingBuilding && this.currentBuilding) {
       this.updateBuildingPreview(pointer);
     }
@@ -372,8 +711,6 @@ export class IslandScene extends Phaser.Scene {
     this.wallPreviewTiles = [];
     this.wallPreviewContainer.removeAll();
 
-    // Debug log
-    console.log('Wall preview cleared');
   }
 
   private placeWall(start: { x: number; y: number }, end: { x: number; y: number }) {
@@ -404,7 +741,6 @@ export class IslandScene extends Phaser.Scene {
     this.updateWallConnections();
     this.updateBuildingDepths();
     this.clearWallPreview();
-    console.log("Wall placed successfully");
   }
 
   private previewWall(start: { x: number; y: number }, end: { x: number; y: number }) {
@@ -425,7 +761,6 @@ export class IslandScene extends Phaser.Scene {
 
     this.wallPreviewContainer.setDepth(Number.MAX_SAFE_INTEGER);
 
-    console.log(`Preview wall created with ${this.wallPreviewTiles.length} tiles`);
   }
 
 
@@ -538,16 +873,19 @@ export class IslandScene extends Phaser.Scene {
       this.buildingPreview.setPosition(isoCoords.x, isoCoords.y);
       this.buildingPreview.setOrigin(0.5, 1);
       this.buildingPreview.setVisible(true);
-      this.buildingPreview.setAlpha(isValidPlacement ? 0.8 : 0.3);
+      this.buildingPreview.setAlpha(isValidPlacement ? 0.8 : 0.4);
       this.buildingPreview.setTint(isValidPlacement ? 0xffffff : 0xff0000);
-
+      if (this.currentBuilding) {
+        const canAfford = this.canAffordBuilding(this.buildingCosts[this.currentBuilding.type.toLowerCase()]);
+      this.buildingPreview.setAlpha(canAfford ? 0.8 : 0.4);
+        this.buildingPreview.setTint(canAfford ? 0xffffff : 0xff0000);
+        this.buildingPreview.setAlpha(isValidPlacement ? 0.8 : 0.4);
+        this.buildingPreview.setTint(isValidPlacement ? 0xffffff : 0xff0000);
+      }
       // Set the preview depth to be above all other game objects
       const previewDepth = (tileCoords.y + this.currentBuilding.height) * 1000 + tileCoords.x + 10000;
       this.buildingPreview.setDepth(previewDepth);
 
-      // Debug information
-      console.log('Tile coordinates:', tileCoords.x, tileCoords.y);
-      console.log('Is valid placement:', isValidPlacement);
     }
   }
 
@@ -581,48 +919,78 @@ export class IslandScene extends Phaser.Scene {
   }
 
   private placeBuilding(x: number, y: number, building: Building) {
-    console.log(`Attempting to place building: ${building.type}`);
-    console.log(`Building data:`, building);
-    const isoCoords = this.tileToIsometricCoordinates(x, y);
-    const newBuilding = this.add.image(isoCoords.x, isoCoords.y, building.sprite);
-    newBuilding.setOrigin(0.5, 1);
+    const buildingType = building.type.toLowerCase();
+    const cost = this.buildingCosts[buildingType];
 
-    // Calculate depth based on the building's position and size
-    const depth = this.calculateDepth(x, y, building.height);
-    newBuilding.setDepth(depth);
-
-
-    // Apply offset if specified
-    if (building.offsetX) newBuilding.x += building.offsetX * this.tileWidth;
-    if (building.offsetY) newBuilding.y += building.offsetY * this.tileHeight;
-
-    newBuilding.setData("type", building.type);
-    newBuilding.setData("gridX", x);
-    newBuilding.setData("gridY", y);
-    newBuilding.setData("width", building.width);
-    newBuilding.setData("height", building.height);
-    newBuilding.setData("hp", building.maxHp);
-    newBuilding.setData("maxHp", building.maxHp);
-    newBuilding.setData("offsetX", building.offsetX || 0);
-    newBuilding.setData("offsetY", building.offsetY || 0);
-
-    this.buildings.push(newBuilding);
-
-    if (building.type === "castle") {
-      this.castles.push(newBuilding);
+    if (!cost) {
+      console.error(`No cost defined for building type: ${buildingType}`);
+      return;
     }
 
-    // Update wall connections only for walls
-    if (building.type === "wall") {
-      this.updateWallConnections();
+    if (this.canAffordBuilding(cost)) {
+      // Deduct resources
+      this.playerResources.wood -= cost.wood;
+      this.playerResources.stone -= cost.stone;
+      this.playerResources.gold -= cost.gold;
+
+      if (building.type.toLowerCase() === 'house') {
+        this.playerResources.maxPopulation += 5; // Increase max population by 5 for each house
+      }
+      // Place the building (existing code)
+      console.log(`Attempting to place building: ${building.type}`);
+      console.log(`Building data:`, building);
+      const isoCoords = this.tileToIsometricCoordinates(x, y);
+      const newBuilding = this.add.image(isoCoords.x, isoCoords.y, building.sprite);
+      newBuilding.setOrigin(0.5, 1);
+
+      // Calculate depth based on the building's position and size
+      const depth = this.calculateDepth(x, y, building.height);
+      newBuilding.setDepth(depth);
+
+      // Apply offset if specified
+      if (building.offsetX) newBuilding.x += building.offsetX * this.tileWidth;
+      if (building.offsetY) newBuilding.y += building.offsetY * this.tileHeight;
+
+      newBuilding.setData("type", building.type);
+      newBuilding.setData("gridX", x);
+      newBuilding.setData("gridY", y);
+      newBuilding.setData("width", building.width);
+      newBuilding.setData("height", building.height);
+      newBuilding.setData("hp", building.maxHp);
+      newBuilding.setData("maxHp", building.maxHp);
+      newBuilding.setData("offsetX", building.offsetX || 0);
+      newBuilding.setData("offsetY", building.offsetY || 0);
+      newBuilding.setData("owner", "Player");
+
+      // Add click handler to the building
+      newBuilding.setInteractive();
+      newBuilding.on('pointerdown', () => this.onBuildingClick(newBuilding));
+
+      // Add health bar
+      this.addHealthBar(newBuilding);
+
+      this.buildings.push(newBuilding);
+
+      if (building.type === "castle") {
+        this.castles.push(newBuilding);
+      }
+
+      // Update wall connections only for walls
+      if (building.type === "wall") {
+        this.updateWallConnections();
+      }
+
+      // Update depths of all buildings to ensure correct rendering order
+      this.updateBuildingDepths();
+      this.sortGameObjects();
+
+      // Emit events
+      this.events.emit('buildingPlaced', newBuilding);
+      this.events.emit('resourcesUpdated', this.playerResources);
+    } else {
+      console.log("Not enough resources to place building");
+      // You might want to show a message to the player here
     }
-
-    // Update depths of all buildings to ensure correct rendering order
-    this.updateBuildingDepths();
-    this.sortGameObjects();
-
-    // Emit an event when a building is placed
-    this.events.emit('buildingPlaced', newBuilding);
   }
   private updateBuildingDepths() {
     this.buildings.forEach(building => {
@@ -655,7 +1023,7 @@ export class IslandScene extends Phaser.Scene {
   }
 
 
-  private calculateDepth(x: number, y: number, height: number): number {
+  public calculateDepth(x: number, y: number, height: number): number {
     return (y + height) * (this.mapWidth + this.mapHeight) + x;
   }
 
@@ -697,8 +1065,6 @@ export class IslandScene extends Phaser.Scene {
   private onWallClick(wall: Phaser.GameObjects.Image) {
     const x = wall.getData("gridX");
     const y = wall.getData("gridY");
-    console.log(`Clicked on wall at grid position (${x}, ${y})`);
-    // Add any additional wall interaction logic here
   }
 
   private worldToTileCoordinates(
@@ -954,8 +1320,8 @@ export class IslandScene extends Phaser.Scene {
       ) => {
         const zoomFactor = 0.1;
         const newZoom = deltaY > 0
-          ? Math.max(0.6, camera.zoom - zoomFactor)
-          : Math.min(1.5, camera.zoom + zoomFactor);
+          ? Math.max(0.7, camera.zoom - zoomFactor)
+          : Math.min(1.4, camera.zoom + zoomFactor);
         camera.setZoom(newZoom);
       }
     );
@@ -1007,6 +1373,102 @@ export class IslandScene extends Phaser.Scene {
       this.buildingPreview = null;
     }
     this.clearWallPreview();
+  }
+
+  private handleSelection(pointer: Phaser.Input.Pointer) {
+    const clickedObject = this.getObjectAtPointer(pointer);
+
+    if (clickedObject instanceof Peasant) {
+      if (!pointer.event.shiftKey) {
+        this.deselectAllPeasants();
+      }
+      clickedObject.onSelect();
+    } else {
+      this.deselectAllPeasants();
+    }
+  }
+
+  private deselectAllPeasants() {
+    this.selectedPeasants.forEach(peasant => peasant.deselect());
+    this.selectedPeasants = [];
+  }
+
+  private moveSelectedPeasants(pointer: Phaser.Input.Pointer) {
+    const targetCoords = this.worldToTileCoordinates(pointer.worldX, pointer.worldY);
+    const isoCoords = this.tileToIsometricCoordinates(targetCoords.x, targetCoords.y);
+    const isReachable = this.isWalkableTile(targetCoords.x, targetCoords.y);
+
+    // Show the move marker
+    this.showMoveMarker(isoCoords.x, isoCoords.y, isReachable);
+
+    if (isReachable) {
+      this.selectedPeasants.forEach((peasant, index) => {
+        const offsetX = (index % 3 - 1) * 32; // Spread peasants horizontally
+        const offsetY = Math.floor(index / 3) * 32; // Spread peasants vertically
+        peasant.moveTo(isoCoords.x + offsetX, isoCoords.y + offsetY);
+      });
+      console.log(`Moving ${this.selectedPeasants.length} peasants to (${isoCoords.x}, ${isoCoords.y})`);
+    } else {
+      console.log("Invalid target location for peasants");
+    }
+  }
+
+  private showMoveMarker(x: number, y: number, isReachable: boolean) {
+    if (this.moveMarker) {
+      this.moveMarker.destroy();
+    }
+
+    if (this.moveMarkerTimer) {
+      this.moveMarkerTimer.remove();
+    }
+
+    const markerTexture = isReachable ? 'green-marker' : 'red-marker';
+    const animationKey = isReachable ? 'green-marker-anim' : 'red-marker-anim';
+  
+    this.moveMarker = this.add.sprite(x, y, markerTexture);
+    this.moveMarker.setOrigin(0.5, 0.5);
+    this.moveMarker.setScale(0.5); // Adjust scale as needed
+    this.moveMarker.setDepth(Number.MAX_SAFE_INTEGER); // Ensure it's always on top
+    this.moveMarker.play(animationKey);
+
+    this.moveMarkerTimer = this.time.delayedCall(2000, () => {
+      if (this.moveMarker) {
+        this.moveMarker.destroy();
+        this.moveMarker = null;
+      }
+    });
+  }
+
+  private getObjectAtPointer(pointer: Phaser.Input.Pointer): Phaser.GameObjects.GameObject | null {
+    const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const tileCoords = this.worldToTileCoordinates(worldPoint.x, worldPoint.y);
+    
+    // Check for peasants first
+    for (const peasant of this.peasants) {
+      if (Phaser.Geom.Rectangle.Contains(peasant.getBounds(), worldPoint.x, worldPoint.y)) {
+        return peasant;
+      }
+    }
+    
+    return this.getHighestObjectAtTile(tileCoords.x, tileCoords.y);
+  }
+
+  private handlePeasantSelection(peasant: Peasant, isShiftKey: boolean) {
+    if (!isShiftKey) {
+      this.deselectAllPeasants();
+    }
+    
+    peasant.onSelect();
+    if (peasant.isSelected) {
+      if (!this.selectedPeasants.includes(peasant)) {
+        this.selectedPeasants.push(peasant);
+      }
+    } else {
+      const index = this.selectedPeasants.indexOf(peasant);
+      if (index > -1) {
+        this.selectedPeasants.splice(index, 1);
+      }
+    }
   }
 }
 

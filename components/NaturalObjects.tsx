@@ -8,6 +8,8 @@ export interface NaturalObject {
   harvestTime: number;
   resourceYield: number;
   canAppearOnSand: boolean;
+  maxHp: number;
+  hp: number;
 }
 
 export const NATURAL_OBJECTS: { [key: string]: NaturalObject } = {
@@ -19,6 +21,8 @@ export const NATURAL_OBJECTS: { [key: string]: NaturalObject } = {
     harvestTime: 5,
     resourceYield: 10,
     canAppearOnSand: false,
+    maxHp: 100,
+    hp: 100,
   },
   oak2: {
     type: "tree",
@@ -28,6 +32,8 @@ export const NATURAL_OBJECTS: { [key: string]: NaturalObject } = {
     harvestTime: 5,
     resourceYield: 10,
     canAppearOnSand: false,
+    maxHp: 100,
+    hp: 100,
   },
   orangeOak: {
     type: "tree",
@@ -37,6 +43,8 @@ export const NATURAL_OBJECTS: { [key: string]: NaturalObject } = {
     harvestTime: 5,
     resourceYield: 10,
     canAppearOnSand: false,
+    maxHp: 100,
+    hp: 100,
   },
   deadTree: {
     type: "tree",
@@ -46,6 +54,8 @@ export const NATURAL_OBJECTS: { [key: string]: NaturalObject } = {
     harvestTime: 3,
     resourceYield: 5,
     canAppearOnSand: false,
+    maxHp: 50,
+    hp: 50,
   },
   firTree: {
     type: "tree",
@@ -55,6 +65,8 @@ export const NATURAL_OBJECTS: { [key: string]: NaturalObject } = {
     harvestTime: 5,
     resourceYield: 10,
     canAppearOnSand: false,
+    maxHp: 100,
+    hp: 100,
   },
   rock1: {
     type: "rock",
@@ -64,6 +76,8 @@ export const NATURAL_OBJECTS: { [key: string]: NaturalObject } = {
     harvestTime: 8,
     resourceYield: 5,
     canAppearOnSand: false,
+    maxHp: 200,
+    hp: 200,
   },
   rock2: {
     type: "rock",
@@ -73,6 +87,8 @@ export const NATURAL_OBJECTS: { [key: string]: NaturalObject } = {
     harvestTime: 8,
     resourceYield: 5,
     canAppearOnSand: false,
+    maxHp: 200,
+    hp: 200,
   },
 };
 
@@ -235,9 +251,6 @@ export class NaturalObjectManager {
     ];
 
     groupPositions.forEach((position, index) => {
-      console.log(
-        `Spawning rock group ${index + 1} at (${position.x}, ${position.y})`
-      );
       this.spawnRockGroupAtLocation(
         position.x,
         position.y,
@@ -316,10 +329,6 @@ export class NaturalObjectManager {
         }
       }
     }
-
-    console.log(
-      `Placed ${rocksPlaced} rocks in group at (${centerX}, ${centerY})`
-    );
   }
 
   private spawnScatteredRocks(
@@ -501,7 +510,6 @@ export class NaturalObjectManager {
       tileToIsometricCoordinates,
       calculateDepth
     );
-    console.log(`Placed ${randomRock} at (${x}, ${y})`);
   }
 
   private placeNaturalObject(
@@ -530,7 +538,9 @@ export class NaturalObjectManager {
     newObject.setData("gridY", y);
     newObject.setData("harvestTime", object.harvestTime);
     newObject.setData("resourceYield", object.resourceYield);
-
+    newObject.setData("hp", object.hp);
+    newObject.setData("maxHp", object.maxHp);
+    newObject.setInteractive();
     this.naturalObjects.push(newObject);
   }
 
