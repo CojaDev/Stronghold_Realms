@@ -74,7 +74,10 @@ export class IslandScene extends Phaser.Scene {
   private lastMinimapUpdateTime: number = 0;
   private minimapUpdateInterval: number = 3000;
   private minNaturalObjectDistance: number = 40;
-
+  private dragStart: Phaser.Math.Vector2 | null = null;
+  private dragRect: Phaser.GameObjects.Rectangle | null = null;
+  private isDragging: boolean = false;
+  private pathfinding: EasyStar | null = null;
   private playerResources: {
     wood: number;
     food: number;
@@ -212,6 +215,7 @@ export class IslandScene extends Phaser.Scene {
   update(time: number, delta: number) {
     super.update(time, delta);
     this.peasants.forEach(peasant => peasant.update());
+    this.updateAllUnitHealthBars();
     if (time - this.lastMinimapUpdateTime > this.minimapUpdateInterval) {
       this.updateMinimapData();
       this.lastMinimapUpdateTime = time;
@@ -221,13 +225,14 @@ export class IslandScene extends Phaser.Scene {
   private spawnInitialPeasants() {
     console.log("Spawning initial peasants");
     for (let i = 0; i < 3; i++) {
-      const spawnPoint = this.spawnPoints[0]; // Assuming the first spawn point is the player's
-      const offsetX = (i - 1) * 86; // Spread peasants horizontally
+      const spawnPoint = this.spawnPoints[0];
+      const offsetX = (i - 1) * 86;
       const isoCoords = this.tileToIsometricCoordinates(spawnPoint.x + i*3, spawnPoint.y+3);
       const peasant = new Peasant(this, isoCoords.x + offsetX, isoCoords.y);
       this.add.existing(peasant);
       peasant.setDepth(this.calculateDepth(spawnPoint.x + i, spawnPoint.y, 1));
       this.peasants.push(peasant);
+      this.createUnitHealthBar(peasant);
       console.log(`Peasant ${i + 1} spawned at (${isoCoords.x + offsetX}, ${isoCoords.y})`);
     }
   }
@@ -359,15 +364,65 @@ export class IslandScene extends Phaser.Scene {
     this.events.emit('naturalObjectSelected', { type, hp, maxHp, harvestTime, resourceYield });
   }
 
+  private createUnitHealthBar(unit: Peasant) {
+    const width = 30;
+    const height = 5;
+    const x = -width / 2;
+    const y = -unit.height - 10;
+
+    const background = this.add.rectangle(x, y, width, height, 0x000000);
+    const bar = this.add.rectangle(x, y, width, height, 0x00ff00);
+
+    background.setOrigin(0, 0.5);
+    bar.setOrigin(0, 0.5);
+
+    unit.setData('healthBar', bar);
+    unit.setData('healthBackground', background);
+
+    this.updateUnitHealthBar(unit);
+
+    // Initially hide the health bar
+    bar.setVisible(false);
+    background.setVisible(false);
+  }
+
+  private updateUnitHealthBar(unit: Peasant) {
+    const bar = unit.getData('healthBar') as Phaser.GameObjects.Rectangle;
+    const background = unit.getData('healthBackground') as Phaser.GameObjects.Rectangle;
+    const hp = unit.hp;
+    const maxHp = unit.maxHp;
+
+    const width = 30 * (hp / maxHp);
+    bar.width = width;
+
+    const depth = unit.depth + 1;
+    bar.setDepth(depth);
+    background.setDepth(depth);
+
+    bar.setPosition(unit.x - 15, unit.y - unit.height - 10);
+    background.setPosition(unit.x - 15, unit.y - unit.height - 10);
+
+    bar.setVisible(unit.isSelected);
+    background.setVisible(unit.isSelected);
+  }
+
+
+
+  private updateAllUnitHealthBars() {
+    this.peasants.forEach(peasant => {
+      this.updateUnitHealthBar(peasant);
+    });
+  }
+
 
   private addHealthBar(building: Phaser.GameObjects.Image) {
     const camera = this.cameras.main;
-    const width = 60 *  camera.zoom;
-    const height = 7 *  camera.zoom;
+    const width = 60 * camera.zoom;
+    const height = 7 * camera.zoom;
     const x = building.x - width / 2;
     const y = building.y - building.height - 10;
 
-    const background = this.add.rectangle(x, y, width+1.5, height+1.5, 0x000000);
+    const background = this.add.rectangle(x, y, width + 1.5, height + 1.5, 0x000000);
     const bar = this.add.rectangle(x, y, width, height, 0x00ff00);
 
     background.setOrigin(0.01, 0.5);
@@ -377,6 +432,10 @@ export class IslandScene extends Phaser.Scene {
     building.setData('healthBackground', background);
 
     this.updateHealthBar(building);
+    
+    // Initially hide the health bar
+    bar.setVisible(false);
+    background.setVisible(false);
   }
 
   private updateHealthBar(building: Phaser.GameObjects.Image) {
@@ -386,7 +445,7 @@ export class IslandScene extends Phaser.Scene {
     const hp = building.getData('hp');
     const maxHp = building.getData('maxHp');
 
-    const width = (60 *  camera.zoom) * (hp / maxHp);
+    const width = (60 * camera.zoom) * (hp / maxHp);
     bar.width = width;
 
     const depth = building.depth + 2;
@@ -395,6 +454,12 @@ export class IslandScene extends Phaser.Scene {
   }
 
   private onBuildingClick(building: Phaser.GameObjects.Image) {
+    this.deselectAllBuildings();
+    this.deselectAllPeasants();
+
+    building.setData('selected', true);
+    this.updateSelectedBuildingHealthBars();
+
     const buildingData = {
       type: building.getData('type'),
       name: building.getData('name'),
@@ -406,6 +471,28 @@ export class IslandScene extends Phaser.Scene {
 
     console.log("Building clicked:", buildingData);
     this.events.emit('buildingSelected', buildingData);
+  }
+
+  private deselectAllBuildings() {
+    this.buildings.forEach(building => {
+      building.setData('selected', false);
+    });
+    this.updateSelectedBuildingHealthBars();
+  }
+
+
+  private calculateFormation(unitCount: number, target: { x: number, y: number }): { x: number, y: number }[] {
+    const formation: { x: number, y: number }[] = [];
+    const formationWidth = Math.ceil(Math.sqrt(unitCount));
+    for (let i = 0; i < unitCount; i++) {
+      const row = Math.floor(i / formationWidth);
+      const col = i % formationWidth;
+      formation.push({
+        x: target.x + col - Math.floor(formationWidth / 2),
+        y: target.y + row - Math.floor(formationWidth / 2)
+      });
+    }
+    return formation;
   }
 
   private getBuildingUpgrades(buildingType: string): string[] {
@@ -659,6 +746,24 @@ export class IslandScene extends Phaser.Scene {
       this.handleSelection(pointer);
     }
 
+    if (pointer.leftButtonDown()) {
+      const clickedObject = this.getObjectAtPointer(pointer);
+      if (!clickedObject) {
+        this.deselectAllPeasants();
+        this.deselectAllBuildings();
+      }
+      this.startDragSelection(pointer);
+    } else if (pointer.rightButtonDown()) {
+      if (this.selectedPeasants.length > 0) {
+        this.moveSelectedPeasants(pointer);
+      } else {
+        this.input.setDefaultCursor('url(/assets/cursors/main.png), pointer');
+        this.isDraggingCamera = true;
+        this.lastPointerPosition = { x: pointer.x, y: pointer.y };
+      }
+      this.stopPlacingBuilding();
+    }
+
     if (this.isPlacingWall && pointer.leftButtonDown()) {
       const tileCoords = this.worldToTileCoordinates(pointer.worldX, pointer.worldY);
       this.wallStartTile = tileCoords;
@@ -673,30 +778,29 @@ export class IslandScene extends Phaser.Scene {
   }
 
   private handlePointerMove(pointer: Phaser.Input.Pointer) {
-    if (this.isDraggingCamera) {
+    if (this.isDragging) {
+      this.updateDragSelection(pointer);
+    } else if (this.isDraggingCamera) {
       const deltaX = pointer.x - this.lastPointerPosition.x;
       const deltaY = pointer.y - this.lastPointerPosition.y;
       this.cameras.main.scrollX -= deltaX / this.cameras.main.zoom;
       this.cameras.main.scrollY -= deltaY / this.cameras.main.zoom;
       this.lastPointerPosition = { x: pointer.x, y: pointer.y };
-      return;
     } else if (this.isPlacingWall && this.isDrawingWall && this.wallStartTile) {
       const endTile = this.worldToTileCoordinates(pointer.worldX, pointer.worldY);
       this.previewWall(this.wallStartTile, endTile);
-
     } else if (this.isPlacingBuilding && this.currentBuilding) {
       this.updateBuildingPreview(pointer);
     }
   }
 
   private handlePointerUp(pointer: Phaser.Input.Pointer) {
-    if (this.isDraggingCamera) {
+    if (this.isDragging) {
+      this.endDragSelection();
+    } else if (this.isDraggingCamera) {
       this.isDraggingCamera = false;
       this.input.setDefaultCursor('url(/assets/cursors/main2.png), pointer');
-      return;
-    }
-
-    if (this.isPlacingWall && this.isDrawingWall && this.wallStartTile) {
+    } else if (this.isPlacingWall && this.isDrawingWall && this.wallStartTile) {
       const endTile = this.worldToTileCoordinates(pointer.worldX, pointer.worldY);
       this.placeWall(this.wallStartTile, endTile);
       this.wallStartTile = null;
@@ -704,6 +808,75 @@ export class IslandScene extends Phaser.Scene {
       this.clearWallPreview();
     }
   }
+
+  private startDragSelection(pointer: Phaser.Input.Pointer) {
+    this.isDragging = true;
+    this.dragStart = new Phaser.Math.Vector2(pointer.worldX, pointer.worldY);
+    this.dragRect = this.add.rectangle(pointer.worldX, pointer.worldY, 1, 1, 0x3498db, 0.3);
+    this.dragRect.setStrokeStyle(2, 0x5dade2);
+    this.dragRect.setOrigin(0, 0);
+    this.dragRect.setDepth(Number.MAX_SAFE_INTEGER);
+  }
+
+  private updateDragSelection(pointer: Phaser.Input.Pointer) {
+    if (this.dragStart && this.dragRect) {
+      const width = pointer.worldX - this.dragStart.x;
+      const height = pointer.worldY - this.dragStart.y;
+      this.dragRect.width = Math.abs(width);
+      this.dragRect.height = Math.abs(height);
+      this.dragRect.x = width > 0 ? this.dragStart.x : pointer.worldX;
+      this.dragRect.y = height > 0 ? this.dragStart.y : pointer.worldY;
+    }
+  }
+
+  private endDragSelection() {
+    this.isDragging = false;
+    if (this.dragStart && this.dragRect) {
+      const selectedUnits = this.getUnitsInSelectionArea(this.dragRect.getBounds());
+      this.selectUnits(selectedUnits);
+      this.dragRect.destroy();
+      this.dragRect = null;
+      this.dragStart = null;
+    }
+  }
+
+  private getUnitsInSelectionArea(selectionArea: Phaser.Geom.Rectangle): Peasant[] {
+    return this.peasants.filter(peasant => {
+      const peasantBounds = peasant.getBounds();
+      return Phaser.Geom.Intersects.RectangleToRectangle(selectionArea, peasantBounds);
+    });
+  }
+
+  private selectUnits(units: Peasant[]) {
+    this.deselectAllPeasants();
+    this.deselectAllBuildings();
+    units.forEach(unit => {
+      unit.onSelect();
+      if (unit.isSelected) {
+        this.selectedPeasants.push(unit);
+        this.updateUnitHealthBar(unit);
+      }
+    });
+  }
+
+
+
+
+  private updateSelectedBuildingHealthBars() {
+    this.buildings.forEach(building => {
+      const healthBar = building.getData('healthBar') as Phaser.GameObjects.Rectangle;
+      const healthBackground = building.getData('healthBackground') as Phaser.GameObjects.Rectangle;
+      if (healthBar && healthBackground) {
+        const isSelected = building.getData('selected') || false;
+        healthBar.setVisible(isSelected);
+        healthBackground.setVisible(isSelected);
+      }
+    });
+  }
+
+  
+
+
 
 
   private clearWallPreview() {
@@ -1389,8 +1562,12 @@ export class IslandScene extends Phaser.Scene {
   }
 
   private deselectAllPeasants() {
-    this.selectedPeasants.forEach(peasant => peasant.deselect());
+    this.selectedPeasants.forEach(peasant => {
+      peasant.deselect();
+      this.updateUnitHealthBar(peasant);
+    });
     this.selectedPeasants = [];
+    this.updateSelectedBuildingHealthBars();
   }
 
   private moveSelectedPeasants(pointer: Phaser.Input.Pointer) {
@@ -1398,14 +1575,14 @@ export class IslandScene extends Phaser.Scene {
     const isoCoords = this.tileToIsometricCoordinates(targetCoords.x, targetCoords.y);
     const isReachable = this.isWalkableTile(targetCoords.x, targetCoords.y);
 
-    // Show the move marker
     this.showMoveMarker(isoCoords.x, isoCoords.y, isReachable);
 
     if (isReachable) {
+      const formation = this.calculateFormation(this.selectedPeasants.length, targetCoords);
       this.selectedPeasants.forEach((peasant, index) => {
-        const offsetX = (index % 3 - 1) * 32; // Spread peasants horizontally
-        const offsetY = Math.floor(index / 3) * 32; // Spread peasants vertically
-        peasant.moveTo(isoCoords.x + offsetX, isoCoords.y + offsetY);
+        const formationPos = formation[index];
+        const formationIsoCoords = this.tileToIsometricCoordinates(formationPos.x, formationPos.y);
+        peasant.moveTo(formationIsoCoords.x, formationIsoCoords.y);
       });
       console.log(`Moving ${this.selectedPeasants.length} peasants to (${isoCoords.x}, ${isoCoords.y})`);
     } else {

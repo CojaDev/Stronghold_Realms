@@ -4,8 +4,8 @@ import { IslandScene } from "./IslandScene";
 export class Peasant extends Phaser.GameObjects.Sprite {
   private gridX: number;
   private gridY: number;
-  private hp: number;
-  private maxHp: number;
+  public hp: number;
+  public maxHp: number;
   private attack: number;
   private isMoving: boolean = false;
   private targetObject: Phaser.GameObjects.GameObject | null = null;
